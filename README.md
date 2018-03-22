@@ -11,7 +11,7 @@ Usage: sh convert.sh [-h] [-t] [-a] [-p] [-m { variable | constant | low-variabl
 		variable (default): Usually provides the best quality/size ratio. Works with target/minimum crf and bitrate value.
 		constant: Easiest way to reach a certain file size. Specifies an average target bitrate.
 		low-variable: Same as the "variable" mode, but doesn't apply a minimum crf value. Only use for long webms, if "variable" produces far too large files.
-	-s file_size_limit: Specifies the file size limit in MB. Default value is 4."
+	-s file_size_limit: Specifies the file size limit in MB. Default value is 4.
 		4chan limits:
 			/gif/ and /wsg/: 4MB - audio allowed - max. 300 seconds
 			all other boards: 3MB - no audio allowed - max. 120 seconds
