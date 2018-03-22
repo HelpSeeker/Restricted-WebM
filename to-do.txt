@@ -10,6 +10,6 @@
 
 -) Check if there are any files in to_convert
 
--) Think of a way to customize single files (differen sub-folders for differnt settings?)
+-) Think of a way to customize single files (different sub-folders for differnt settings?)
 
 -) Add fail-safe switches for the resolution / length limits
