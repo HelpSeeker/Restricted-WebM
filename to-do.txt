@@ -1,0 +1,15 @@
+-) Refine the adjustment of buffer size (low/medium/high bitrate, audio yes/no)
+
+-) Add skip_threshold only for very difficult encodes
+
+-) Automatic decision when to switch bitrate mode / 2-pass encoding
+
+-) Find an easy way to let the user choose filters beforehand
+
+-) Add option to use vp9/opus instead of vp8/vorbis
+
+-) Check if there are any files in to_convert
+
+-) Think of a way to customize single files (differen sub-folders for differnt settings?)
+
+-) Add fail-safe switches for the resolution / length limits
