@@ -2,9 +2,7 @@
 
 -) Add skip_threshold only for very difficult encodes
 
--) Automatic decision when to switch bitrate mode / 2-pass encoding
-
--) Find an easy way to let the user choose filters beforehand
+-) Automatic decision when to switch bitrate mode / 2-pass encoding (remove need for flags in the process)
 
 -) Add option to use vp9/opus instead of vp8/vorbis
 
@@ -13,3 +11,9 @@
 -) Think of a way to customize single files (different sub-folders for differnt settings?)
 
 -) Add fail-safe switches for the resolution / length limits
+
+-) Use bits/pixel value to scale down videos if their quality would be too low otherwise (add flag to force input bitrate)
+
+-) Set default values during trim mode (start=0, end=length), if the user only hits enter
+
+-) 
