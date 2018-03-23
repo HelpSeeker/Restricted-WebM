@@ -42,7 +42,7 @@ RestrictedWebm/
 
 ```
 
-**Functions:**
+**Functions (existing and planned ones):**
 
 General:  
 - [x] Convert all videos from the to_convert folder into webms  
