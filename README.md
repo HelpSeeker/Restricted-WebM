@@ -4,7 +4,7 @@ A simple shell script to create webms within a certain file size limit (mainly t
 The main goal is to produce webms that fit within a specified file limit, while producing the maximum possible quality and requiring minimum user input. If you want fast encoding speed, then this script isn't for you.
 
 ```
-Usage: sh convert.sh [-h] [-t] [-a] [-p] [-m { variable | constant | low-variable }] [-s file_size_limit]
+Usage: convert.sh [-h] [-t] [-a] [-p] [-m { variable | constant | low-variable }] [-s file_size_limit]
 	-h: Show help
 	-t: Enable trim mode. Lets you specify which part of the input video(s) to encode
 	-a: Enables audio encoding
