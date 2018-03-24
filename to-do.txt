@@ -1,6 +1,4 @@
--) Add skip_threshold only for very difficult encodes
-
--) Automatic decision when to switch bitrate mode / 2-pass encoding (remove need for flags in the process)
+-) Automatic decision when to switch to 2-pass encoding (remove need for flag in the process)
 
 -) Add option to use vp9/opus instead of vp8/vorbis
 
@@ -14,4 +12,10 @@
 
 -) Set default values during trim mode (start=0, end=length), if the user only hits enter
 
--) Throw warning for unknown bitrate mode sooner (right now it lets you e.g. specify the trim range before exiting)
+-) Fix error where a high audio bitrate leads to a negative video bitrate for very long videos (either disable audio automatically or try to reduce audio bitrate)
+
+-) Deactivate automatic downscaling if the user set the scale filter manually
+
+-) Add additional methods of reducing the filesize before using skip_threshold
+
+-) If unable to encode a file within the specified size limit, delete the webm and put its name into a text file
