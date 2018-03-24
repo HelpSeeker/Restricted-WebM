@@ -1,5 +1,3 @@
--) Refine the adjustment of buffer size (low/medium/high bitrate, audio yes/no)
-
 -) Add skip_threshold only for very difficult encodes
 
 -) Automatic decision when to switch bitrate mode / 2-pass encoding (remove need for flags in the process)
@@ -12,8 +10,8 @@
 
 -) Add fail-safe switches for the resolution / length limits
 
--) Use bits/pixel value to scale down videos if their quality would be too low otherwise (add flag to force input bitrate)
+-) Add flag to disable automatic downscaling
 
 -) Set default values during trim mode (start=0, end=length), if the user only hits enter
 
--) 
+-) Throw warning for unknown bitrate mode sooner (right now it lets you e.g. specify the trim range before exiting)

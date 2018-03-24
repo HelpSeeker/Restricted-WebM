@@ -21,80 +21,73 @@ usage () {
 	echo -e "\\t\\t\\tall other boards: 3MB - no audio allowed - max. 120 seconds"
 	echo -e "\\t\\t8chan limits:"
 	echo -e "\\t\\t\\tall boards: 8MB - audio allowed"
-	echo -e "\\t-f filters: Add filters that you want to apply (with settings). Be careful to type them as you would normally with ffmpeg. Refer to ffmpeg's documentation for further information."
+	echo -e "\\t-f filters: Add filters that you want to apply (with settings). DO NOT USE SCALING AS IT'S APPLIED AUTOMATICALLY RIGHT NOW! Also be careful to type them as you would normally with ffmpeg. Refer to ffmpeg's documentation for further information."
 }
 
-# Define convert function
-convert () {
-	# Use ffprobe to get video properties for later calculations
+# Use ffprobe to get video properties for later calculations
+info () {
 	length=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$1")
 	frame_rate=$(ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of default=noprint_wrappers=1:nokey=1 "$1")
 	video_height=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of default=noprint_wrappers=1:nokey=1 "$1")
 	video_width=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=noprint_wrappers=1:nokey=1 "$1")
-	
-	# Trim settings
-	if [[ "$trim_mode" = true ]]; then
-		echo "Current file: $1"
-		echo "Please specify where to start encoding (in seconds):"
-		read -r start_time
-		echo "Now please specify where to stop encoding (in seconds):"
-		read -r end_time
-		duration=$(bc <<< "scale=3; $end_time-$start_time")
-	else
-		start_time=0
-		duration=$length
-	fi
-	
-	# Audio settings
-	if [[ "$audio_mode" = true ]]; then 
-		audio_bitrate=96
-		audio_settings="-c:a libvorbis -ac 2 -ar 44100 -b:a ${audio_bitrate}K"
-	else
-		audio_bitrate=0
-		audio_settings="-an"
-	fi
-	
-	# Calculate various values for the encoding process
+	aspect_ratio=$(bc <<< "scale=3; $video_width/$video_height")
+}
+
+# Trim function when flag is accordingly set
+trim () {
+	echo "Current file: $1"
+	echo "Please specify where to start encoding (in seconds):"
+	read -r start_time
+	echo "Now please specify where to stop encoding (in seconds):"
+	read -r end_time
+	duration=$(bc <<< "scale=3; $end_time-$start_time")
+}
+
+# Audio function when flag is accordingly set
+audio () {
+	audio_bitrate=96
+	audio_settings="-c:a libvorbis -ac 2 -ar 44100 -b:a ${audio_bitrate}K"
+}
+
+# Function to calculate important values for the encoding process (mainly bitrate)
+calc () {
 	video_bitrate=$(bc <<< "$file_size*8*1000/$duration-$audio_bitrate")
 	bufsize=$(bc <<< "$video_bitrate*5")
-	
-	# Calculate bits/pixel value to decide whether the input should be downscaled
-	bpp_original=$(bc <<< "scale=3; $video_bitrate*1000/($video_height*$video_width*$frame_rate)")
-	if [[ "$bpp_original" < 0.03 ]]; then
-		scale_factor=1
-	fi
+	bpp=$(bc <<< "scale=3; $video_bitrate*1000/($video_height*$video_width*$frame_rate)")
+}
 
-	# Video settings
-	if [[ "$bitrate_mode" = "variable" ]]; then
+# Automatic downscale function
+downscale () {
+	while [[ $(bc <<< "$bpp < 0.03") -eq 1 && $video_height -gt 360 ]]; do
+		video_height=$(bc <<< "$video_height - 10")
+		bpp=$(bc <<< "scale=3; $video_bitrate*1000/($video_height*$video_height*$aspect_ratio*$frame_rate)")
+		scaling_factor="-vf scale=-1:$video_height"
+	done
+}
+
+# Bitrade mode function based on which mode was chosen by the user. Defaults to variable.
+mode () {
+	if [[ "$1" = "variable" ]]; then
 		video_settings="-crf 10 -qmax 50 -b:v ${video_bitrate}K"
-	elif [[ "$bitrate_mode" = "constant" ]]; then
+	elif [[ "$1" = "constant" ]]; then
 		video_settings="-minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K"
-	elif [[ "$bitrate_mode" = "low-variable" ]]; then
+	elif [[ "$1" = "low-variable" ]]; then
 		video_settings="-crf 10 -b:v ${video_bitrate}K"
 	else
 		echo "Unknown bitrate mode!"
 		exit
 	fi
+}
 
-	# Use ffmpeg to convert to webm
+# Function for the actual conversion via ffmpeg
+convert () {
 	if [[ "$two_pass" = true ]]; then
 		ffmpeg -y -ss $start_time -i "$1" -t $duration -c:v libvpx -slices 8 -threads 1 $video_settings -deadline good -cpu-used 5 $audio_settings -pass 1 -f webm /dev/null
-		ffmpeg -y -ss $start_time -i "$1" -t $duration -c:v libvpx -slices 8 -threads 1 -metadata title="${1%.*}" -auto-alt-ref 1 -lag-in-frames 16 -bufsize $bufsize $video_settings -deadline best -cpu-used 0 $filter_settings $audio_settings -pass 2 "../${1%.*}.webm"
+		ffmpeg -y -ss $start_time -i "$1" -t $duration -c:v libvpx -slices 8 -threads 1 -metadata title="${1%.*}" -auto-alt-ref 1 -lag-in-frames 16 -bufsize $bufsize $video_settings -deadline best -cpu-used 0 $scaling_factor $filter_settings $audio_settings -pass 2 "../${1%.*}.webm"
 		rm ffmpeg2pass-0.log
 	else
-		ffmpeg -y -ss $start_time -i "$1" -t $duration -c:v libvpx -slices 8 -threads 1 -metadata title="${1%.*}" -lag-in-frames 16 -bufsize $bufsize $video_settings -deadline best -cpu-used 0 $filter_settings $audio_settings "../${1%.*}.webm"
+		ffmpeg -y -ss $start_time -i "$1" -t $duration -c:v libvpx -slices 8 -threads 1 -metadata title="${1%.*}" -lag-in-frames 16 -bufsize $bufsize $video_settings -deadline best -cpu-used 0 $scaling_factor $filter_settings $audio_settings "../${1%.*}.webm"
 	fi
-	
-	#~ # Print various variables for debugging purposes
-	#~ echo "Duration: $duration"
-	#~ echo "Frame rate: $frame_rate"
-	#~ echo "Height: $video_height"
-	#~ echo "Width: $video_width"
-	#~ echo "Audio bitrate: $audio_bitrate"
-	#~ echo "Video bitrate: $video_bitrate"
-	#~ echo "Buffer size: $bufsize"
-	#~ echo "Bpp with the original resolution: $bpp_original"
-	#~ echo "Do we need to scale down: $scale_factor"
 }
 
 ####################
@@ -126,4 +119,31 @@ done
 [[ -z $file_size ]] && file_size=3
 
 # The main conversion loop
-for input in *; do convert "$input"; done
+for input in *; do (
+	info "$input"
+	
+	# Set default conversion variables
+	# Might get overwritten based on set flags
+	start_time=0
+	duration=$length
+	audio_bitrate=0
+	audio_settings="-an"
+
+	if [[ "$trim_mode" = true ]]; then trim "$input"; fi
+	if [[ "$audio_mode" = true ]]; then audio; fi
+	calc
+	if [[ $(bc <<< "$bpp < 0.03") -eq 1 ]]; then downscale; fi
+	mode $bitrate_mode
+	convert "$input"
+
+	# Print various variables for debugging purposes
+	#~ echo "Duration: $duration"
+	#~ echo "Frame rate: $frame_rate"
+	#~ echo "Height: $video_height"
+	#~ echo "Width: $video_width"
+	#~ echo "Audio bitrate: $audio_bitrate"
+	#~ echo "Video bitrate: $video_bitrate"
+	#~ echo "Buffer size: $bufsize"
+	#~ echo "Bits per pixel: $bpp"
+	#~ echo "Aspect ratio: $aspect_ratio"
+); done

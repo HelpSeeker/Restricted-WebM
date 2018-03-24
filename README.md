@@ -19,7 +19,7 @@ Usage: convert.sh [-h] [-t] [-a] [-p] [-m { variable | constant | low-variable }
 			all other boards: 3MB - no audio allowed - max. 120 seconds
 		8chan limits:
 			all boards: 8MB - audio allowed
-	-f filters: Add filters that you want to apply (with settings). Be careful to type them as you would normally with ffmpeg. Refer to ffmpeg's documentation for further information.
+	-f filters: Add filters that you want to apply (with settings). DO NOT USE SCALING AS IT'S APPLIED AUTOMATICALLY RIGHT NOW! Also be careful to type them as you would normally with ffmpeg. Refer to ffmpeg's documentation for further information.
 
 ```
 
@@ -58,7 +58,7 @@ Quality adjustments:
 - [x] Choose which bitrate mode to use (default: VBR)  
 - [x] Calculate bitrate based on video length  
 - [ ] Loops through several settings (bitrate modes, skip_threshold, ...) until the file size fits in the specified limit  
-- [ ] Automatic downscaling if quality would be too low otherwise  
+- [x] Automatic downscaling if quality would be too low otherwise  
 
 Audio:  
 - [x] Encode with audio (default: off)  
