@@ -1,14 +1,14 @@
 # RestrictedWebm
 A simple shell script to create webms within a certain file size limit (mainly targeted at 4chan).
 
-The main goal is to produce webms that fit within a specified file limit, while producing the maximum possible quality and requiring minimum user input. If you want fast encoding speed, then this script isn't for you.  
+The main goal is to produce webms that fit within a specified size limit, while producing the maximum possible quality and requiring minimum user input. If you want fast encoding speed, then this script isn't for you.  
 
 **How it works:**  
 
-1. Calculates video bitrate based on the (trimmed) input video length and whether or not audio mode is active  
-2. Downscales the video to ensure a minimum bits per pixel value (>= 0.03). Stops at 360p, even if bpp < 0.03
-3. Encodes a webm with variable bitrate mode and a minimum crf value  
-4. IF the file size of the new webm is larger than the specified limit, it tries again with different settings (variable bitrate without minimum crf -> constant bitrate -> constant bitrate and allows ffmpeg to drop frames)  
+1. Calculates video bitrate based on the (trimmed) input video length and whether or not audio mode is active.  
+2. Downscales the video to ensure a minimum bits per pixel value (>= 0.03) is reached. Stops at 360p, even if bpp < 0.03.
+3. Encodes a webm with variable bitrate mode and a minimum crf value.  
+4. IF the file size of the new webm is larger than the specified limit, it tries again with different settings (variable bitrate without minimum crf -> constant bitrate -> constant bitrate and allows ffmpeg to drop frames).  
 
 ```
 Usage: convert.sh [-h] [-t] [-a] [-p] [-m { variable | constant | low-variable }] [-s file_size_limit]
