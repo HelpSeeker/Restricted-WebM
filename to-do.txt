@@ -1,23 +1,17 @@
--) Add option to use vp9/opus instead of vp8/vorbis
-
 -) Check if there are any files in to_convert
 
 -) Think of a way to customize single files (different sub-folders for differnt settings?)
 
 -) Add fail-safe switches for the resolution / length limits
 
--) Add flag to disable automatic downscaling
-
 -) Set default values during trim mode (start=0, end=length), if the user only hits enter
 
 -) Fix error where a high audio bitrate leads to a negative video bitrate for very long videos (either disable audio automatically or try to reduce audio bitrate)
-
--) Deactivate automatic downscaling if the user set the scale filter manually
-
--) Add additional methods of reducing the filesize before using skip_threshold
 
 -) If unable to encode a file within the specified size limit, delete the webm and put its name into a text file
 
 -) Add HQ mode. If bits per pixel value is not high enough, force the user to specify how much to downscale and/or trim the video (show how much is necessary to reach the threshold)
 
 -) Include a bitrate adjustment function to a) offer another solution to oversized webms before switching to alternate bitrate modes and b) allow adjustment if the webm undershoots the specified size by a wide margin
+
+-) If resolution was already lowered to 360p, but the bpp value is still below the threshold, then start reducing the framerate (will also have a minimum value; 24? 20? 18?)
