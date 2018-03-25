@@ -6,11 +6,10 @@
 
 # Define help text
 usage () {
-	echo -e "Usage: $0 [-h] [-t] [-a] [-p] [-s file_size_limit] [-f filters]"
+	echo -e "Usage: $0 [-h] [-t] [-a] [-s file_size_limit] [-f filters]"
 	echo -e "\\t-h: Show Help"
 	echo -e "\\t-t: Enable trim mode. Lets you specify which part of the input video(s) to encode"
 	echo -e "\\t-a: Enables audio encoding"
-	echo -e "\\t-p: Enables VP8's 2-pass encoding. Only recommended for high bitrates (e.i. short webms)"
 	echo -e "\\t-s file_size_limit: Specifies the file size limit in MB. Default value is 3."
 	echo -e "\\t\\t4chan limits:"
 	echo -e "\\t\\t\\t/gif/ and /wsg/: 4MB - audio allowed - max. 300 seconds"
@@ -54,7 +53,7 @@ calc () {
 
 # Automatic downscale function
 downscale () {
-	while [[ $(bc <<< "$bpp < 0.03") -eq 1 && $video_height -gt 360 ]]; do
+	while [[ $(bc <<< "$bpp < 0.04") -eq 1 && $video_height -gt 360 ]]; do
 		(( video_height -= 10 ))
 		bpp=$(bc <<< "scale=3; $video_bitrate*1000/($video_height*$video_height*$aspect_ratio*$frame_rate)")
 		scaling_factor="-vf scale=-1:$video_height"
@@ -75,7 +74,7 @@ mode () {
 
 # Function for the actual conversion via ffmpeg
 convert () {
-	if [[ "$two_pass" = true ]]; then
+	if [[ $(bc <<< "$bpp >= 0.075") -eq 1 ]]; then
 		ffmpeg -y -ss $start_time -i "$1" -t $duration -c:v libvpx -slices 8 -threads 1 $video_settings -deadline good -cpu-used 5 $audio_settings -pass 1 -f webm /dev/null
 		ffmpeg -y -ss $start_time -i "$1" -t $duration -c:v libvpx -slices 8 -threads 1 -metadata title="${1%.*}" -auto-alt-ref 1 -lag-in-frames 16 -bufsize $bufsize $video_settings -deadline best -cpu-used 0 $scaling_factor $filter_settings $audio_settings -pass 2 "../done/${1%.*}.webm"
 		rm ffmpeg2pass-0.log
@@ -104,19 +103,12 @@ limiter () {
 ###### Main script ######
 ####################
 
-# Create sub-directory for the finished webms
-mkdir done
-
-# Change into sub-directory to avoid file conflicts when converting webms
-cd to_convert || exit
- 
 # Reads input parameters and assigns values accordingly
-while getopts ":htaps:f:" ARG; do
+while getopts ":htas:f:" ARG; do
 	case "$ARG" in
 	h) usage && exit;;
 	t) trim_mode=true;;
 	a) audio_mode=true;;
-	p) two_pass=true;;
 	s) file_size=$OPTARG;;
 	f) filter_settings="-filter_complex $OPTARG";;
 	*) echo "Unknown flag used. Enter sh $0 -h to show all available options." && exit;;
@@ -126,8 +118,13 @@ done
 # Set default values for unspecified parameters
 [[ -z $trim_mode ]] && trim_mode=false
 [[ -z $audio_mode ]] && audio_mode=false
-[[ -z $two_pass ]] && two_pass=false
 [[ -z $file_size ]] && file_size=3
+
+# Create sub-directory for the finished webms
+mkdir done
+
+# Change into sub-directory to avoid file conflicts when converting webms
+cd to_convert || exit
 
 # The main conversion loop
 for input in *; do (
@@ -157,5 +154,6 @@ for input in *; do (
 	#~ echo "Video bitrate: $video_bitrate"
 	#~ echo "Buffer size: $bufsize"
 	#~ echo "Bits per pixel: $bpp"
+	#~ echo "2-pass mode is active: $two_pass"
 	#~ echo "Aspect ratio: $aspect_ratio"
 ); done

@@ -1,5 +1,3 @@
--) Automatic decision when to switch to 2-pass encoding (remove need for flag in the process)
-
 -) Add option to use vp9/opus instead of vp8/vorbis
 
 -) Check if there are any files in to_convert
@@ -19,3 +17,7 @@
 -) Add additional methods of reducing the filesize before using skip_threshold
 
 -) If unable to encode a file within the specified size limit, delete the webm and put its name into a text file
+
+-) Add HQ mode. If bits per pixel value is not high enough, force the user to specify how much to downscale and/or trim the video (show how much is necessary to reach the threshold)
+
+-) Include a bitrate adjustment function to a) offer another solution to oversized webms before switching to alternate bitrate modes and b) allow adjustment if the webm undershoots the specified size by a wide margin
