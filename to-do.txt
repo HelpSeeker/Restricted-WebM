@@ -10,4 +10,6 @@
 
 -) Include a bitrate adjustment function to a) offer another solution to oversized webms before switching to alternate bitrate modes and b) allow adjustment if the webm undershoots the specified size by a wide margin
 
--) If resolution was already lowered to 360p, but the bpp value is still below the threshold, then start reducing the framerate (will also have a minimum value; 24? 20? 18?)
+-) Find a way to read user defined scale in order to use height/width in calculations (very low priority as I think it's pretty complicated for minimal gain)
+
+-) Refine function to choose audio bitrate

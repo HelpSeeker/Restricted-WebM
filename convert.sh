@@ -9,7 +9,7 @@ usage () {
 	echo -e "Usage: $0 [-h] [-t] [-a] [-n] [-s file_size_limit] [-f filters]"
 	echo -e "\\t-h: Show Help"
 	echo -e "\\t-t: Enable trim mode. Lets you specify which part of the input video(s) to encode"
-	echo -e "\\t-a: Enables audio encoding"
+	echo -e "\\t-a: Enables audio encoding. Bitrate gets chosen automatically."
 	echo -e "\\t-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis. Will lead to even longer encoding times, but offers a better quality (especially at low bitrates). Also note that 4chan doesn't support VP9/Opus webms."
 	echo -e "\\t-s file_size_limit: Specifies the file size limit in MB. Default value is 3."
 	echo -e "\\t\\t4chan limits:"
@@ -49,13 +49,24 @@ trim () {
 }
 
 # Defines audio codec and properties
+# Audio bitrate function/assignment is the result of trying to match my experience with 4MB webms
 audio () {
-	audio_bitrate=96
+	audio_factor=$(bc <<< "$file_size*8*1000/($duration*4.5*32)")
+	if [[ $audio_factor -le 1 ]]; then audio_channels=1; else audio_channels=2; fi
+	if [[ $audio_factor -le 1 ]]; then
+		audio_bitrate=32
+	elif [[ $audio_factor -eq 2 ]]; then
+		audio_bitrate=64
+	elif [[ $audio_factor -gt 2 && $audio_factor -le 6 ]]; then
+		audio_bitrate=96
+	else
+		audio_bitrate=128
+	fi
 	if [[ "$new_codecs" = true ]]; then
-		audio_settings="-c:a libopus -ac 2 -ar 48000 -b:a ${audio_bitrate}K"
+		audio_settings="-c:a libopus -ac $audio_channels -ar 48000 -b:a ${audio_bitrate}K"
 		# -ar 48000, because Opus only allows certain sampling rates (48000, 24000, 16000, 12000, 8000)
 	else
-		audio_settings="-c:a libvorbis -ac 2 -ar 44100 -b:a ${audio_bitrate}K"
+		audio_settings="-c:a libvorbis -ac $audio_channels -ar 44100 -b:a ${audio_bitrate}K"
 	fi
 }
 
@@ -75,6 +86,15 @@ downscale () {
 	done
 }
 
+# Reduces framerate if bpp value is too low and the input video has a framerate above 24 fps
+# frame_settings introduced in case of further adjustments regarding keyframe intervals
+framedrop () {
+	if [[ $(bc <<< "$bpp < 0.04") -eq 1 && $(bc <<< "$frame_rate > 24") -eq 1 ]]; then
+		frame_rate=24
+		frame_settings="-r $frame_rate"
+	fi
+}
+
 # Defines which video codec and bitrate mode to use
 video () {
 	if [[ "$new_codecs" = true ]]; then video_codec="libvpx-vp9"; else video_codec="libvpx"; fi
@@ -91,11 +111,11 @@ video () {
 # The actual ffmpeg conversion commands
 convert () {
 	if [[ $(bc <<< "$bpp >= 0.075") -eq 1 ]]; then
-		ffmpeg -y -ss $start_time -i "$1" -t $duration $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 $audio_settings -pass 1 -f webm /dev/null
-		ffmpeg -y -ss $start_time -i "$1" -t $duration $video_settings -slices 8 -threads 1 -metadata title="${1%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $scaling_factor $filter_settings $audio_settings -pass 2 "../done/${1%.*}.webm"
+		ffmpeg -y -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 $audio_settings -pass 1 -f webm /dev/null
+		ffmpeg -y -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${1%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $scaling_factor $filter_settings $audio_settings -pass 2 "../done/${1%.*}.webm"
 		rm ffmpeg2pass-0.log
 	else
-		ffmpeg -y -ss $start_time -i "$1" -t $duration $video_settings -slices 8 -threads 1 -metadata title="${1%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $scaling_factor $filter_settings $audio_settings "../done/${1%.*}.webm"
+		ffmpeg -y -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${1%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $scaling_factor $filter_settings $audio_settings "../done/${1%.*}.webm"
 	fi
 }
 
@@ -161,13 +181,13 @@ for input in *; do (
 	if [[ "$audio_mode" = true ]]; then audio; fi
 	calc
 	contains "$filter_settings" "scale" || downscale
+	framedrop
 	video 1
 	convert "$input"
 	limiter "$input"
 	
 	# Print various variables for debugging purposes
 	#~ echo "Duration: $duration"
-	#~ echo "Frame rate: $frame_rate"
 	#~ echo "Height: $video_height"
 	#~ echo "Width: $video_width"
 	#~ echo "Audio bitrate: $audio_bitrate"
@@ -176,4 +196,7 @@ for input in *; do (
 	#~ echo "Bits per pixel: $bpp"
 	#~ echo "2-pass mode is active: $two_pass"
 	#~ echo "Aspect ratio: $aspect_ratio"
+	#~ echo "Framerate: $frame_rate"
+	#~ echo "Audio factor: $audio_factor"
+	#~ echo "Channels: $audio_channels"
 ); done
