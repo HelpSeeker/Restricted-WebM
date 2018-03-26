@@ -84,7 +84,7 @@ video () {
 		2) video_settings="-c:v $video_codec -crf 10 -b:v ${video_bitrate}K";;		
 		3) video_settings="-c:v $video_codec -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K";;
 		4) video_settings="-c:v $video_codec -bufsize $bufsize -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K -skip_threshold 100";;
-		*) echo "File still doesn't fit the specified limit. Please use ffmpeg manually.";;
+		*) { echo "File still doesn't fit the specified limit. Please use ffmpeg manually." && rm "../done/${input%.*}.webm" && echo "$input" >> ../too_large.txt; };;
 	esac
 }
 
@@ -105,7 +105,7 @@ limiter () {
 	counter=1
 	while [[ $webm_size -gt $(bc <<< "($file_size*1024*1024+0.5)/1") ]]; do
 		(( counter += 1 ))
-		mode $counter
+		video $counter
 		if [[ "$counter" -lt 5 ]]; then 
 			convert "$1" 
 			webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${1%.*}.webm")
@@ -138,10 +138,13 @@ done
 [[ -z $new_codecs ]] && new_codecs=false
 [[ -z $file_size ]] && file_size=3
 
-# Create sub-directory for the finished webms
-mkdir done
 # Change into sub-directory to avoid file conflicts when converting webms
-cd to_convert || exit
+cd to_convert 2> /dev/null || { echo "No to_convert folder present" && exit; }
+# Make sure there are any files in to_convert/
+# Used another for-loop, since wildcard matching doesn't work with test alone
+for file in *; do [[ -e "$file" ]] || { echo "No files present in to_convert" && exit; }; break; done
+# Create sub-directory for the finished webms
+mkdir ../done 2> /dev/null
 
 # The main conversion loop
 for input in *; do (

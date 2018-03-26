@@ -9,6 +9,7 @@ The main goal is to produce webms that fit within a specified size limit, while 
 2. Downscales the video to ensure a minimum bits per pixel value (>= 0.04) is reached. Stops at 360p, even if bpp < 0.04. Automatic downscaling is disabled if the scale filter is used manually.  
 3. Encodes a webm with variable bitrate mode and a minimum crf value. Uses 2-pass encoding if bits per pixel value is high enough (>= 0.075).  
 4. IF the file size of the new webm is larger than the specified limit, it tries again with different settings (variable bitrate without minimum crf -> constant bitrate -> constant bitrate and allows ffmpeg to drop frames).  
+5. (Optional, depending on the produced webms) Creates a list of files (too_large.txt) that cannot be fit into the file limit, even after going through all available settings
 
 ```
 Usage: convert.sh [-h] [-t] [-a] [-n] [-s file_size_limit]
@@ -54,13 +55,14 @@ General:
 - [x] Trim each video individually (default: off)  
 - [x] Apply filters to all videos  
 - [x] Use each video's file name for the title metadata  
+- [x] List input files that cannot be forced into the specified size limit
 - [ ] Set filters for individual videos  
 
 Quality adjustments:  
 - [x] Calculate bitrate based on video length  
 - [x] Automatic downscaling if quality would be too low otherwise (disabled when using scale manually)
 - [x] Use 2-pass encoding automatically  
-- [x] Loops through bitrate settings until file size fits into the specified limit  
+- [x] Loops through bitrate settings to fit the file size into the specified limit  
 - [ ] HighQuality mode, where low quality output is prevented by demanding additional input from the user
 
 Audio:  
