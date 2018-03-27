@@ -8,8 +8,8 @@
 
 -) Add HQ mode. If bits per pixel value is not high enough, force the user to specify how much to downscale and/or trim the video (show how much is necessary to reach the threshold)
 
--) Include a bitrate adjustment function to a) offer another solution to oversized webms before switching to alternate bitrate modes and b) allow adjustment if the webm undershoots the specified size by a wide margin
-
 -) Find a way to read user defined scale in order to use height/width in calculations (very low priority as I think it's pretty complicated for minimal gain)
 
 -) Refine function to choose audio bitrate
+
+-) Do extensive tests with the new limiter to figure out how prone it is to loop too much

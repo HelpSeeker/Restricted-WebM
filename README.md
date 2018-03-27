@@ -9,11 +9,12 @@ The main goal is to produce webms that fit within a specified size limit, while 
 2. Downscales the video to ensure a minimum bits per pixel value (>= 0.04) is reached. Stops at 360p, even if bpp < 0.04. Automatic downscaling is disabled if the scale filter is used manually.  
 3. Reduces the framerate if the bpp value is still below 0.04 at 360p. Only affects input files with a framerate above 24fps when automatic downscaling is active.
 4. Encodes a webm with variable bitrate mode and a minimum crf value. Uses 2-pass encoding if bits per pixel value is high enough (>= 0.075).  
-5. IF the file size of the new webm is larger than the specified limit, it tries again with different settings (variable bitrate without minimum crf -> constant bitrate -> constant bitrate and allows ffmpeg to drop frames).  
-6. (Optional, depending on the produced webms) Creates a list of files (too_large.txt) that cannot be fit into the file limit, even after going through all available settings
+5. Adjusts bitrate if the produced webm is larger than the specified limit or smaller than a certain percentage of the limit (default 75%).
+6. In addition to the adjusted bitrate it loops through different video encoding settings (variable bitrate without minimum crf -> constant bitrate -> constant bitrate and allows ffmpeg to drop frames).  
+7. (Optional, depending on the produced webms) Creates a list of files (too_large.txt) that cannot be fit into the file limit, even after going through all available settings
 
 ```
-Usage: convert.sh [-h] [-t] [-a] [-n] [-s file_size_limit]
+Usage: convert.sh [-h] [-t] [-a] [-n] [-s file_size_limit] [-u undershoot_limit] [-f filters]
 	-h: Show help
 	-t: Enable trim mode. Lets you specify which part of the input video(s) to encode
 	-a: Enables audio encoding. Bitrate gets chosen automatically.
@@ -24,7 +25,8 @@ Usage: convert.sh [-h] [-t] [-a] [-n] [-s file_size_limit]
 			all other boards: 3MB - no audio allowed - max. 120 seconds
 		8chan limits:
 			all boards: 8MB - audio allowed
-	-f filters: Add filters that you want to apply (with settings). Be careful to type them as you would normally with ffmpeg. Refer to ffmpeg's documentation for further information.
+	-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.75 (75%). Very high values may lead to infinite loops
+	-f filters: Add filters that you want to apply (with settings). Be careful to type them as you would normally with ffmpeg. Refer to ffmpeg's documentation for further information
 
 ```
 
@@ -52,6 +54,7 @@ Restricted-Webm/
 General:  
 - [x] Convert all videos from the to_convert folder into webms  
 - [x] Specify which file size limit to adhere to (default: 3MB)
+- [x] Specify which percentage of the file size limit must be utilized
 - [x] Option to use VP9/Opus instead of VP8/Vorbis  
 - [x] Trim each video individually (default: off)  
 - [x] Apply filters to all videos  
@@ -64,6 +67,7 @@ Quality adjustments:
 - [x] Automatic downscaling if quality would be too low otherwise (disabled when using scale manually)
 - [x] Use 2-pass encoding automatically  
 - [x] Loops through bitrate settings to fit the file size into the specified limit  
+- [x] Adjust bitrate if the webm over-/undershoots the specified limit
 - [x] Reduce framerate if quality is still to low after downscaling
 - [ ] HighQuality mode, where low quality output is prevented by demanding additional input from the user
 
