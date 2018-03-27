@@ -6,10 +6,12 @@
 
 -) Add warning if audio bitrate leads to a negative video bitrate for very long videos (skip file and put info into txt file)
 
--) Add HQ mode. If bits per pixel value is not high enough, force the user to specify how much to downscale and/or trim the video (show how much is necessary to reach the threshold)
+-) For HQ mode: Force the user to specify how much to further downscale and/or trim the video if downscale+framedrop isn't enough to reach bpp threshold
 
 -) Find a way to read user defined scale in order to use height/width in calculations (very low priority as I think it's pretty complicated for minimal gain)
 
 -) Refine function to choose audio bitrate
 
 -) Do extensive tests with the new limiter to figure out it's effectiveness (especially if it fixes the extreme cases of overshooting the file size limit with VP9)
+
+-) Add audio showcase mode. Use static image as video stream, reduce framerate to 1fps, increase keyframe interval and use higher audio bitrate

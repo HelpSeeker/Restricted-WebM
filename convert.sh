@@ -1,17 +1,18 @@
 #!/bin/bash
 
 ###################
-###### Functions ######
+# Functions
 ###################
 
 # Defines help text
 usage () {
-	echo -e "Usage: $0 [-h] [-t] [-a] [-n] [-s file_size_limit] [-u undershoot_limit] [-f filters]"
+	echo -e "Usage: $0 [-h] [-t] [-a] [-q] [-n] [-s file_size_limit] [-u undershoot_limit] [-f filters]"
 	echo -e "\\t-h: Show Help"
 	echo -e "\\t-t: Enable trim mode. Lets you specify which part of the input video(s) to encode"
-	echo -e "\\t-a: Enables audio encoding. Bitrate gets chosen automatically."
+	echo -e "\\t-a: Enable audio encoding. Bitrate gets chosen automatically."
+	echo -e "\\t-q: Enable HQ (high quality) mode. The script tries to raise the bpp value high enough to use 2-pass encoding. Audio bitrate fixed at 96kbps. Doesn't work if you manually use the scale filter."
 	echo -e "\\t-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis. Will lead to even longer encoding times, but offers a better quality (especially at low bitrates). Also note that 4chan doesn't support VP9/Opus webms."
-	echo -e "\\t-s file_size_limit: Specifies the file size limit in MB. Default value is 3."
+	echo -e "\\t-s file_size_limit: Specify the file size limit in MB. Default value is 3."
 	echo -e "\\t\\t4chan limits:"
 	echo -e "\\t\\t\\t/gif/ and /wsg/: 4MB - audio allowed - max. 300 seconds"
 	echo -e "\\t\\t\\tall other boards: 3MB - no audio allowed - max. 120 seconds"
@@ -52,17 +53,21 @@ trim () {
 # Defines audio codec and properties
 # Audio bitrate function/assignment is the result of trying to match my experience with 4MB webms
 audio () {
-	audio_factor=$(bc <<< "$file_size*8*1000/($duration*4.5*32)")
-	if [[ $audio_factor -le 1 ]]; then audio_channels=1; else audio_channels=2; fi
-	if [[ $audio_factor -le 1 ]]; then
-		audio_bitrate=32
-	elif [[ $audio_factor -eq 2 ]]; then
-		audio_bitrate=64
-	elif [[ $audio_factor -gt 2 && $audio_factor -le 6 ]]; then
+	if [[ "$hq_mode" = true ]]; then
 		audio_bitrate=96
+		audio_channels=2
 	else
-		audio_bitrate=128
+		audio_factor=$(bc <<< "$file_size*8*1000/($duration*5.5*32)")
+		if [[ $audio_factor -eq 0 ]]; then audio_channels=1; else audio_channels=2; fi
+		case $audio_factor in
+			0) audio_bitrate=48;;
+			1) audio_bitrate=64;;
+			2 | 3 | 4 | 5 | 6) audio_bitrate=96;;
+			*) audio_bitrate=128;;
+		esac
+		if [[ $audio_factor -le 1 ]]; then audio_channels=1; else audio_channels=2; fi
 	fi
+	
 	if [[ "$new_codecs" = true ]]; then
 		audio_settings="-c:a libopus -ac $audio_channels -ar 48000 -b:a ${audio_bitrate}K"
 		# -ar 48000, because Opus only allows certain sampling rates (48000, 24000, 16000, 12000, 8000)
@@ -82,7 +87,7 @@ calc () {
 downscale () {
 	new_video_height=$video_height
 	new_bpp=$bpp
-	while [[ $(bc <<< "$new_bpp < 0.04") -eq 1 && $new_video_height -gt 360 ]]; do
+	while [[ $(bc <<< "$new_bpp < $bcc_threshold") -eq 1 && $new_video_height -gt $height_threshold ]]; do
 		(( new_video_height -= 10 ))
 		new_bpp=$(bc <<< "scale=3; $1*1000/($new_video_height*$new_video_height*$aspect_ratio*$frame_rate)")
 		scaling_factor="-vf scale=-1:$new_video_height"
@@ -92,7 +97,7 @@ downscale () {
 # Reduces framerate if bpp value is too low and the input video has a framerate above 24 fps
 # frame_settings introduced in case of further adjustments regarding keyframe intervals
 framedrop () {
-	if [[ $(bc <<< "$new_bpp < 0.04") -eq 1 && $(bc <<< "$frame_rate > 24") -eq 1 ]]; then
+	if [[ $(bc <<< "$new_bpp < $bcc_threshold") -eq 1 && $(bc <<< "$frame_rate > 24") -eq 1 ]]; then
 		new_frame_rate=24
 		frame_settings="-r $new_frame_rate"
 	fi
@@ -127,8 +132,7 @@ convert () {
 
 # Function to summarize the first encoding cycle.
 initial_encode () {
-	contains "$filter_settings" "scale" || downscale "$video_bitrate"
-	framedrop
+	contains "$filter_settings" "scale" || { downscale "$video_bitrate" && framedrop; }
 	video 1
 	convert "$1"
 }
@@ -143,8 +147,7 @@ limiter () {
 	while [[ $webm_size -gt $(bc <<< "($file_size*1024*1024+0.5)/1") || $webm_size -lt $(bc <<< "($file_size*1024*1024*$undershoot_limit+0.5)/1") ]]; do
 		(( counter += 1 ))
 		new_video_bitrate=$(bc <<< "($video_bitrate*$file_size*1024*1024/$webm_size+0.5)/1")
-		contains "$filter_settings" "scale" || if [[ $(($counter%2)) -eq 0 ]]; then downscale "$new_video_bitrate"; else downscale "$video_bitrate"; fi
-		framedrop
+		contains "$filter_settings" "scale" || { if [[ $(($counter%2)) -eq 0 ]]; then downscale "$new_video_bitrate"; else downscale "$video_bitrate"; fi && framedrop; }
 		video "$counter"
 		if [[ "$counter" -le 7 ]]; then 
 			convert "$1" 
@@ -158,15 +161,16 @@ limiter () {
 }
 
 ####################
-###### Main script ######
+# Main script 
 ####################
 
 # Read input parameters and assigns values accordingly
-while getopts ":htans:u:f:" ARG; do
+while getopts ":htaqns:u:f:" ARG; do
 	case "$ARG" in
 	h) usage && exit;;
 	t) trim_mode=true;;
 	a) audio_mode=true;;
+	q) hq_mode=true;;
 	n) new_codecs=true;;
 	s) file_size="$OPTARG";;
 	u) undershoot_limit="$OPTARG";;
@@ -178,9 +182,23 @@ done
 # Set default values for unspecified parameters
 [[ -z $trim_mode ]] && trim_mode=false
 [[ -z $audio_mode ]] && audio_mode=false
+[[ -z $hq_mode ]] && hq_mode=false
 [[ -z $new_codecs ]] && new_codecs=false
 [[ -z $file_size ]] && file_size=3
 [[ -z $undershoot_limit ]] && undershoot_limit=0.75
+
+# Set default conversion variables that are the same for all files
+# Might get overwritten if the corresponding flags are set
+audio_bitrate=0
+audio_settings="-an"
+start_time=0
+if [[ "$hq_mode" = true ]]; then
+	bcc_threshold=0.075
+	height_threshold=180
+else
+	bcc_threshold=0.4
+	height_threshold=360
+fi
 
 # Change into sub-directory to avoid file conflicts when converting webms
 cd to_convert 2> /dev/null || { echo "No to_convert folder present" && exit; }
@@ -193,14 +211,8 @@ mkdir ../done 2> /dev/null
 # The main conversion loop
 for input in *; do (
 	info "$input"
-	
-	# Set default conversion variables
-	# Might get overwritten based on set flags
-	start_time=0
+	# Duration is different for each file, so it must be defined for each file seperately
 	duration=$length
-	audio_bitrate=0
-	audio_settings="-an"
-
 	if [[ "$trim_mode" = true ]]; then trim "$input"; fi
 	if [[ "$audio_mode" = true ]]; then audio; fi
 	calc

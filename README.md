@@ -6,20 +6,21 @@ The main goal is to produce webms that fit within a specified size limit, while 
 **How it works:**  
 
 1. Calculates video bitrate based on the file size limit, (trimmed) input video length and audio bitrate (also based on size limit/length).  
-2. Downscales the video to ensure a minimum bits per pixel value (>= 0.04) is reached. Stops at 360p, even if bpp < 0.04. Automatic downscaling is disabled if the scale filter is used manually.  
-3. Reduces the framerate if the bpp value is still below 0.04 at 360p. Only affects input files with a framerate above 24fps when automatic downscaling is active.
+2. Downscales the video to ensure a minimum bits per pixel value (>= 0.04 for normal, >=0.075 for HQ mode) is reached. Stops at 360p (180p with HQ mode), even if bpp value is still too low. Automatic downscaling is disabled if the scale filter is used manually.  
+3. Reduces the framerate if the bpp value is still below its threshold at the minimum resolution. Only affects input files with a framerate above 24fps when automatic downscaling is active.
 4. Encodes a webm with variable bitrate mode and a minimum crf value. Uses 2-pass encoding if bits per pixel value is high enough (>= 0.075).  
 5. Adjusts bitrate if the produced webm is larger than the specified limit or smaller than a certain percentage of the limit (default 75%).
 6. Loops through different video encoding settings (variable bitrate without minimum crf -> constant bitrate -> constant bitrate and allows ffmpeg to drop frames) trying both the first calculated and adjusted bitrate.  
 7. (Optional, depending on the produced webms) Creates a list of files (too_large.txt) that cannot be fit into the file limit, even after going through all available settings
 
 ```
-Usage: convert.sh [-h] [-t] [-a] [-n] [-s file_size_limit] [-u undershoot_limit] [-f filters]
-	-h: Show help
+Usage: convert.sh [-h] [-t] [-a] [-q] [-n] [-s file_size_limit] [-u undershoot_limit] [-f filters]
+	-h: Show Help
 	-t: Enable trim mode. Lets you specify which part of the input video(s) to encode
-	-a: Enables audio encoding. Bitrate gets chosen automatically.
-	-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis. Will lead to even longer encoding times, but offers a better quality (especially at low bitrates). Also note that 4chan doesn't support VP9/Opus webms.  
-	-s file_size_limit: Specifies the file size limit in MB. Default value is 3.
+	-a: Enable audio encoding. Bitrate gets chosen automatically.
+	-q: Enable HQ (high quality) mode. The script tries to raise the bpp value high enough to use 2-pass encoding. Audio bitrate fixed at 96kbps. Doesn't work if you manually use the scale filter.
+	-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis. Will lead to even longer encoding times, but offers a better quality (especially at low bitrates). Also note that 4chan doesn't support VP9/Opus webms.
+	-s file_size_limit: Specify the file size limit in MB. Default value is 3.
 		4chan limits:
 			/gif/ and /wsg/: 4MB - audio allowed - max. 300 seconds
 			all other boards: 3MB - no audio allowed - max. 120 seconds
@@ -31,7 +32,7 @@ Usage: convert.sh [-h] [-t] [-a] [-n] [-s file_size_limit] [-u undershoot_limit]
 ```
 
 **Requirements:**  
-ffmpeg  
+ffmpeg (with libvpx, libvpx-vp9, libvorbis and libopus enabled)  
 ffprobe  
 ```
 Folder structure:
@@ -69,8 +70,9 @@ Quality adjustments:
 - [x] Loops through bitrate settings to fit the file size into the specified limit  
 - [x] Adjust bitrate if the webm over-/undershoots the specified limit
 - [x] Reduce framerate if quality is still to low after downscaling
-- [ ] HighQuality mode, where low quality output is prevented by demanding additional input from the user
+- [x] HQ (high quality) mode (higher bpp threshold during downscaling)
 
 Audio:  
 - [x] Encode with audio (default: off)  
-- [x] Adjust audio bitrate automatically (range: 32-128 kbps)
+- [x] Adjust audio bitrate automatically (range: 48-128 kbps)
+- [ ] Audio showcase mode (static image as video stream with high quality audio encoding)
