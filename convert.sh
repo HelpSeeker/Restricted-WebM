@@ -17,7 +17,7 @@ usage () {
 	echo -e "\\t\\t\\tall other boards: 3MB - no audio allowed - max. 120 seconds"
 	echo -e "\\t\\t8chan limits:"
 	echo -e "\\t\\t\\tall boards: 8MB - audio allowed"
-	echo -e "\\t-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.75 (75%). Very high values may lead to infinite loops"
+	echo -e "\\t-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.75 (75%). Very high values may lead to worse results (since the script has to fall back on its last video encoding setting)"
 	echo -e "\\t-f filters: Add filters that you want to apply (with settings). Be careful to type them as you would normally with ffmpeg. Refer to ffmpeg's documentation for further information"
 }
 
@@ -103,10 +103,13 @@ video () {
 	if [[ "$new_codecs" = true ]]; then video_codec="libvpx-vp9"; else video_codec="libvpx"; fi
 	# modes=( "variable" "low-variable" "constant" "skip_threshold")
 	case $1 in
-		1) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${2}K";;
-		2) video_settings="-c:v $video_codec -crf 10 -b:v ${2}K";;	
-		3) video_settings="-c:v $video_codec -minrate:v ${2}K -maxrate:v ${2}K -b:v ${2}K";;
-		4) video_settings="-c:v $video_codec -bufsize $bufsize -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K -skip_threshold 100";;
+		1) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${video_bitrate}K";;
+		2) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${new_video_bitrate}K";;
+		3) video_settings="-c:v $video_codec -crf 10 -b:v ${video_bitrate}K";;	
+		4) video_settings="-c:v $video_codec -crf 10 -b:v ${new_video_bitrate}K";;	
+		5) video_settings="-c:v $video_codec -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K";;
+		6) video_settings="-c:v $video_codec -minrate:v ${new_video_bitrate}K -maxrate:v ${new_video_bitrate}K -b:v ${new_video_bitrate}K";;
+		7) video_settings="-c:v $video_codec -bufsize $bufsize -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K -skip_threshold 100";;
 		*) { echo "File still doesn't fit the specified limit. Please use ffmpeg manually." && rm "../done/${input%.*}.webm" && echo "$input" >> ../too_large.txt; };;
 	esac
 }
@@ -126,43 +129,30 @@ convert () {
 initial_encode () {
 	contains "$filter_settings" "scale" || downscale "$video_bitrate"
 	framedrop
-	video 1 "$video_bitrate"
+	video 1
 	convert "$1"
 }
 
 # Loops through the different video settings if the webm is too large/small
-# If too large: go through different bitrate modes
-# If too small (<0.9*limit): encode with higher bitrate (always same mode)
+# Every setting can be done twice: Once with the original calculated and once with an adjusted bitrate
 limiter () {
 	#echo "Debug mode: Enter webm size."
 	#read -r webm_size
 	webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${1%.*}.webm")
 	counter=1
 	while [[ $webm_size -gt $(bc <<< "($file_size*1024*1024+0.5)/1") || $webm_size -lt $(bc <<< "($file_size*1024*1024*$undershoot_limit+0.5)/1") ]]; do
-		if [[ $webm_size -gt $(bc <<< "($file_size*1024*1024+0.5)/1") ]]; then
-			(( counter += 1 ))
-			new_video_bitrate=$(bc <<< "($video_bitrate*$file_size*1024*1024/$webm_size+0.5)/1")
-			contains "$filter_settings" "scale" || downscale "$new_video_bitrate"
-			framedrop
-			video "$counter" "$new_video_bitrate"
-			if [[ "$counter" -le 4 ]]; then 
-				convert "$1" 
-				#echo "Debug mode: Enter webm size."
-				#read -r webm_size
-				webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${1%.*}.webm")
-			else
-				break
-			fi
-		elif [[ $webm_size -lt $(bc <<< "($file_size*1024*1024*$undershoot_limit+0.5)/1") ]]; then
-			counter=1
-			new_video_bitrate=$(bc <<< "($video_bitrate*$file_size*1024*1024/$webm_size+0.5)/1")
-			contains "$filter_settings" "scale" || downscale "$new_video_bitrate"
-			framedrop
-			video 1 "$new_video_bitrate"
+		(( counter += 1 ))
+		new_video_bitrate=$(bc <<< "($video_bitrate*$file_size*1024*1024/$webm_size+0.5)/1")
+		contains "$filter_settings" "scale" || if [[ $(($counter%2)) -eq 0 ]]; then downscale "$new_video_bitrate"; else downscale "$video_bitrate"; fi
+		framedrop
+		video "$counter"
+		if [[ "$counter" -le 7 ]]; then 
 			convert "$1" 
 			#echo "Debug mode: Enter webm size."
 			#read -r webm_size
 			webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${1%.*}.webm")
+		else
+			break
 		fi
 	done
 }

@@ -4,7 +4,7 @@
 
 -) Set default values during trim mode (start=0, end=length), if the user only hits enter
 
--) Fix error where a high audio bitrate leads to a negative video bitrate for very long videos (either disable audio automatically or try to reduce audio bitrate)
+-) Add warning if audio bitrate leads to a negative video bitrate for very long videos (skip file and put info into txt file)
 
 -) Add HQ mode. If bits per pixel value is not high enough, force the user to specify how much to downscale and/or trim the video (show how much is necessary to reach the threshold)
 
@@ -12,4 +12,4 @@
 
 -) Refine function to choose audio bitrate
 
--) Do extensive tests with the new limiter to figure out how prone it is to loop too much
+-) Do extensive tests with the new limiter to figure out it's effectiveness (especially if it fixes the extreme cases of overshooting the file size limit with VP9)

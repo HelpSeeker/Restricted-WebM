@@ -10,7 +10,7 @@ The main goal is to produce webms that fit within a specified size limit, while 
 3. Reduces the framerate if the bpp value is still below 0.04 at 360p. Only affects input files with a framerate above 24fps when automatic downscaling is active.
 4. Encodes a webm with variable bitrate mode and a minimum crf value. Uses 2-pass encoding if bits per pixel value is high enough (>= 0.075).  
 5. Adjusts bitrate if the produced webm is larger than the specified limit or smaller than a certain percentage of the limit (default 75%).
-6. In addition to the adjusted bitrate it loops through different video encoding settings (variable bitrate without minimum crf -> constant bitrate -> constant bitrate and allows ffmpeg to drop frames).  
+6. Loops through different video encoding settings (variable bitrate without minimum crf -> constant bitrate -> constant bitrate and allows ffmpeg to drop frames) trying both the first calculated and adjusted bitrate.  
 7. (Optional, depending on the produced webms) Creates a list of files (too_large.txt) that cannot be fit into the file limit, even after going through all available settings
 
 ```
@@ -25,7 +25,7 @@ Usage: convert.sh [-h] [-t] [-a] [-n] [-s file_size_limit] [-u undershoot_limit]
 			all other boards: 3MB - no audio allowed - max. 120 seconds
 		8chan limits:
 			all boards: 8MB - audio allowed
-	-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.75 (75%). Very high values may lead to infinite loops
+	-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.75 (75%). Very high values may lead to worse results (since the script has to fall back on its last video encoding setting)
 	-f filters: Add filters that you want to apply (with settings). Be careful to type them as you would normally with ffmpeg. Refer to ffmpeg's documentation for further information
 
 ```
