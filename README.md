@@ -6,7 +6,7 @@ The main goal is to produce webms that fit within a specified size limit, while 
 **How it works:**  
 
 1. Calculates video bitrate based on the file size limit, (trimmed) input video length and audio bitrate (also based on size limit/length).  
-2. Downscales the video to ensure a minimum bits per pixel value (>= 0.04 for normal, >=0.075 for HQ mode) is reached. Stops at 360p (180p with HQ mode), even if bpp value is still too low. Automatic downscaling is disabled if the scale filter is used manually.  
+2. Downscales the video to ensure a minimum bits per pixel value (>= 0.04 for normal, >=0.075 for HQ mode) is reached. Stops at 360p (240p with HQ mode), even if bpp value is still too low. Automatic downscaling is disabled if the scale filter is used manually.  
 3. Reduces the framerate if the bpp value is still below its threshold at the minimum resolution. Only affects input files with a framerate above 24fps when automatic downscaling is active.
 4. Encodes a webm with variable bitrate mode and a minimum crf value. Uses 2-pass encoding if bits per pixel value is high enough (>= 0.075).  
 5. Adjusts bitrate if the produced webm is larger than the specified limit or smaller than a certain percentage of the limit (default 75%).

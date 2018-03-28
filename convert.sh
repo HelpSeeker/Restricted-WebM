@@ -97,7 +97,7 @@ downscale () {
 # Reduces framerate if bpp value is too low and the input video has a framerate above 24 fps
 # frame_settings introduced in case of further adjustments regarding keyframe intervals
 framedrop () {
-	if [[ $(bc <<< "$new_bpp < $bcc_threshold") -eq 1 && $(bc <<< "$frame_rate > 24") -eq 1 ]]; then
+	if [[ $(bc <<< "$new_bpp < $bcc_threshold") -eq 1 && $(bc <<< "$frame_rate > 24") -gt 1 ]]; then
 		new_frame_rate=24
 		frame_settings="-r $new_frame_rate"
 	fi
@@ -109,12 +109,12 @@ video () {
 	# modes=( "variable" "low-variable" "constant" "skip_threshold")
 	case $1 in
 		1) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${video_bitrate}K";;
-		2) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${new_video_bitrate}K";;
-		3) video_settings="-c:v $video_codec -crf 10 -b:v ${video_bitrate}K";;	
-		4) video_settings="-c:v $video_codec -crf 10 -b:v ${new_video_bitrate}K";;	
-		5) video_settings="-c:v $video_codec -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K";;
-		6) video_settings="-c:v $video_codec -minrate:v ${new_video_bitrate}K -maxrate:v ${new_video_bitrate}K -b:v ${new_video_bitrate}K";;
-		7) video_settings="-c:v $video_codec -bufsize $bufsize -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K -skip_threshold 100";;
+		2 | 3) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${new_video_bitrate}K";;
+		4) video_settings="-c:v $video_codec -crf 10 -b:v ${video_bitrate}K";;	
+		5 | 6) video_settings="-c:v $video_codec -crf 10 -b:v ${new_video_bitrate}K";;	
+		7) video_settings="-c:v $video_codec -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K";;
+		8 | 9) video_settings="-c:v $video_codec -minrate:v ${new_video_bitrate}K -maxrate:v ${new_video_bitrate}K -b:v ${new_video_bitrate}K";;
+		10) video_settings="-c:v $video_codec -bufsize $bufsize -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K -skip_threshold 100";;
 		*) { echo "File still doesn't fit the specified limit. Please use ffmpeg manually." && rm "../done/${input%.*}.webm" && echo "$input" >> ../too_large.txt; };;
 	esac
 }
@@ -122,11 +122,14 @@ video () {
 # The actual ffmpeg conversion commands
 convert () {
 	if [[ $(bc <<< "$new_bpp >= 0.075") -eq 1 ]]; then
-		ffmpeg -y -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 $audio_settings -pass 1 -f webm /dev/null
-		ffmpeg -y -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${1%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $scaling_factor $filter_settings $audio_settings -pass 2 "../done/${1%.*}.webm"
+		echo -e "\\n\\n\\n"
+		ffmpeg -y -hide_banner -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 $audio_settings -pass 1 -f webm /dev/null
+		echo -e "\\n\\n\\n"
+		ffmpeg -y -hide_banner -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${1%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $scaling_factor $filter_settings $audio_settings -pass 2 "../done/${1%.*}.webm"
 		rm ffmpeg2pass-0.log
 	else
-		ffmpeg -y -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${1%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $scaling_factor $filter_settings $audio_settings "../done/${1%.*}.webm"
+		echo -e "\\n\\n\\n"
+		ffmpeg -y -hide_banner -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${1%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $scaling_factor $filter_settings $audio_settings "../done/${1%.*}.webm"
 	fi
 }
 
@@ -144,13 +147,15 @@ limiter () {
 	#read -r webm_size
 	webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${1%.*}.webm")
 	counter=1
+	last_video_bitrate=$video_bitrate
 	while [[ $webm_size -gt $(bc <<< "($file_size*1024*1024+0.5)/1") || $webm_size -lt $(bc <<< "($file_size*1024*1024*$undershoot_limit+0.5)/1") ]]; do
 		(( counter += 1 ))
-		new_video_bitrate=$(bc <<< "($video_bitrate*$file_size*1024*1024/$webm_size+0.5)/1")
-		contains "$filter_settings" "scale" || { if [[ $(($counter%2)) -eq 0 ]]; then downscale "$new_video_bitrate"; else downscale "$video_bitrate"; fi && framedrop; }
+		new_video_bitrate=$(bc <<< "($last_video_bitrate*$file_size*1024*1024/$webm_size+0.5)/1")
+		if [[ $new_video_bitrate -lt $last_video_bitrate  || $new_video_bitrate -gt $(bc <<< "($last_video_bitrate*1.6+0.5)/1") ]]; then contains "$filter_settings" "scale" || { downscale "$new_video_bitrate" && framedrop; }; fi
 		video "$counter"
-		if [[ "$counter" -le 7 ]]; then 
+		if [[ "$counter" -le 10 ]]; then 
 			convert "$1" 
+			last_video_bitrate=$new_video_bitrate
 			#echo "Debug mode: Enter webm size."
 			#read -r webm_size
 			webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${1%.*}.webm")
@@ -194,7 +199,7 @@ audio_settings="-an"
 start_time=0
 if [[ "$hq_mode" = true ]]; then
 	bcc_threshold=0.075
-	height_threshold=180
+	height_threshold=240
 else
 	bcc_threshold=0.4
 	height_threshold=360
