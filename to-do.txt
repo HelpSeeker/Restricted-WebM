@@ -1,17 +1,19 @@
 -) Think of a way to customize single files (different sub-folders for differnt settings?)
-
--) Add fail-safe switches for the resolution / length limits
-
--) Set default values during trim mode (start=0, end=length), if the user only hits enter
-
 -) Add warning if audio bitrate leads to a negative video bitrate for very long videos (skip file and put info into txt file)
-
--) For HQ mode: Force the user to specify how much to further downscale and/or trim the video if downscale+framedrop isn't enough to reach bpp threshold
-
 -) Find a way to read user defined scale in order to use height/width in calculations (very low priority as I think it's pretty complicated for minimal gain)
-
--) Refine function to choose audio bitrate
-
--) Do extensive tests with the new limiter to figure out it's effectiveness (especially if it fixes the extreme cases of overshooting the file size limit with VP9)
-
 -) Add audio showcase mode. Use static image as video stream, reduce framerate to 1fps, increase keyframe interval and use higher audio bitrate
+
+-) Improve limiter function
+	-> Add iterations flag to define how many times the video bitrate should be adjusted for each bitrate mode
+	-> Use video function only to choose bitrate mode
+	-> Use for-loops for the bitrate adjustment of each mode
+	-> Create bitrate adjustment function to clean up limiter
+	-> Seperate function in case of too small files, as the steps taken should differ from the normal limiter (further adjusting bitrate instead of switching bitrate mode)
+	
+-) Improve audio function
+	-> Increase max. possible audio bitrate to 192kbps
+	-> Tweak the current makeshift function to choose the audio bitrate
+	
+-) Improve HQ mode
+	-> Force the user to specify how much to further downscale and/or trim the video if downscale+framedrop isn't enough to reach bpp threshold
+	-> Add additional requirements (bitrate?) for 2-pass encoding

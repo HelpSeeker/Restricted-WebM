@@ -43,10 +43,12 @@ info () {
 # Asks user where to start and end each video and use it to calculate the video's duration
 trim () {
 	echo "Current file: $1"
-	echo "Please specify where to start encoding (in seconds):"
+	echo "Please specify where to start encoding (in seconds). Leave empty to start at the beginning of the input video."
 	read -r start_time
-	echo "Now please specify where to stop encoding (in seconds):"
+	[[ -z $start_time ]] && start_time=0
+	echo "Now please specify where to stop encoding (in seconds). Leave empty to stop at the end of the input video."
 	read -r end_time
+	[[ -z $end_time ]] && end_time=$length
 	duration=$(bc <<< "scale=3; $end_time-$start_time")
 }
 
@@ -106,15 +108,15 @@ framedrop () {
 # Defines which video codec and bitrate mode to use
 video () {
 	if [[ "$new_codecs" = true ]]; then video_codec="libvpx-vp9"; else video_codec="libvpx"; fi
-	# modes=( "variable" "low-variable" "constant" "skip_threshold")
 	case $1 in
-		1) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${video_bitrate}K";;
-		2 | 3) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${new_video_bitrate}K";;
-		4) video_settings="-c:v $video_codec -crf 10 -b:v ${video_bitrate}K";;	
-		5 | 6) video_settings="-c:v $video_codec -crf 10 -b:v ${new_video_bitrate}K";;	
-		7) video_settings="-c:v $video_codec -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K";;
-		8 | 9) video_settings="-c:v $video_codec -minrate:v ${new_video_bitrate}K -maxrate:v ${new_video_bitrate}K -b:v ${new_video_bitrate}K";;
-		10) video_settings="-c:v $video_codec -bufsize $bufsize -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K -skip_threshold 100";;
+		0) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${video_bitrate}K";;
+		1 | 2) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${new_video_bitrate}K";;
+		3) video_settings="-c:v $video_codec -crf 10 -b:v ${video_bitrate}K";;	
+		4 | 5) video_settings="-c:v $video_codec -crf 10 -b:v ${new_video_bitrate}K";;	
+		6) video_settings="-c:v $video_codec -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K";;
+		7 | 8) video_settings="-c:v $video_codec -minrate:v ${new_video_bitrate}K -maxrate:v ${new_video_bitrate}K -b:v ${new_video_bitrate}K";;
+		# 9) video_settings="-c:v $video_codec -bufsize $bufsize -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K -skip_threshold 100";;
+		b) { echo "File can't be fit in the specified file size/undershoot limit. Please use ffmpeg manually." && rm "../done/${input%.*}.webm" && echo "$input" >> ../too_small_for_undershoot.txt; };;
 		*) { echo "File still doesn't fit the specified limit. Please use ffmpeg manually." && rm "../done/${input%.*}.webm" && echo "$input" >> ../too_large.txt; };;
 	esac
 }
@@ -136,7 +138,7 @@ convert () {
 # Function to summarize the first encoding cycle.
 initial_encode () {
 	contains "$filter_settings" "scale" || { downscale "$video_bitrate" && framedrop; }
-	video 1
+	video 0
 	convert "$1"
 }
 
@@ -146,21 +148,49 @@ limiter () {
 	#echo "Debug mode: Enter webm size."
 	#read -r webm_size
 	webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${1%.*}.webm")
-	counter=1
+	counter=0
 	last_video_bitrate=$video_bitrate
 	while [[ $webm_size -gt $(bc <<< "($file_size*1024*1024+0.5)/1") || $webm_size -lt $(bc <<< "($file_size*1024*1024*$undershoot_limit+0.5)/1") ]]; do
+		
+		if [[ $webm_size -lt $(bc <<< "($file_size*1024*1024+0.5)/1") && -z $best_try_counter ]]; then
+			best_try_counter=$counter
+			best_try_bitrate=$last_video_bitrate
+		fi
+		
 		(( counter += 1 ))
-		new_video_bitrate=$(bc <<< "($last_video_bitrate*$file_size*1024*1024/$webm_size+0.5)/1")
-		if [[ $new_video_bitrate -lt $last_video_bitrate  || $new_video_bitrate -gt $(bc <<< "($last_video_bitrate*1.6+0.5)/1") ]]; then contains "$filter_settings" "scale" || { downscale "$new_video_bitrate" && framedrop; }; fi
-		video "$counter"
-		if [[ "$counter" -le 10 ]]; then 
+		
+		if [[ $(($counter%3)) -eq 0 ]]; then
+			new_video_bitrate=$video_bitrate
+		else
+			new_video_bitrate=$(bc <<< "($last_video_bitrate*$file_size*1024*1024/$webm_size+0.5)/1")
+			difference=$(($last_video_bitrate-$new_video_bitrate))
+			if [[ ${difference#-} -lt $(bc <<< "($last_video_bitrate*0.1+0.5)/1") && $difference -gt 0 ]]; then
+				new_video_bitrate=$(bc <<< "($last_video_bitrate/1.1+0.5)/1")
+			elif [[ ${difference#-} -lt $(bc <<< "($last_video_bitrate*0.1+0.5)/1") && $difference -lt 0 ]]; then
+				new_video_bitrate=$(bc <<< "($last_video_bitrate*1.1+0.5)/1")
+			fi
+		fi
+		
+		if [[ $new_video_bitrate -lt $last_video_bitrate  || $new_video_bitrate -gt $(bc <<< "($last_video_bitrate*1.5+0.5)/1") ]]; then contains "$filter_settings" "scale" || { downscale "$new_video_bitrate" && framedrop; }; fi
+		
+		if [[ "$counter" -le 8 ]]; then 
+			video "$counter"
 			convert "$1" 
 			last_video_bitrate=$new_video_bitrate
 			#echo "Debug mode: Enter webm size."
 			#read -r webm_size
 			webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${1%.*}.webm")
 		else
-			break
+			if [[ -n $best_try_counter ]]; then
+				video "b"
+				new_video_bitrate=$best_try_bitrate
+				video "best_try_counter"
+				convert "$1"
+				break
+			else
+				video "$counter"
+				break
+			fi
 		fi
 	done
 }

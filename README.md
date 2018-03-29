@@ -11,7 +11,7 @@ The main goal is to produce webms that fit within a specified size limit, while 
 4. Encodes a webm with variable bitrate mode and a minimum crf value. Uses 2-pass encoding if bits per pixel value is high enough (>= 0.075).  
 5. Adjusts bitrate if the produced webm is larger than the specified limit or smaller than a certain percentage of the limit (default 75%).
 6. Loops through different video encoding settings (variable bitrate without minimum crf -> constant bitrate -> constant bitrate and allows ffmpeg to drop frames) trying both the first calculated and adjusted bitrate.  
-7. (Optional, depending on the produced webms) Creates a list of files (too_large.txt) that cannot be fit into the file limit, even after going through all available settings
+7. (Optional, depending on the produced webms) Creates a list of files (too_large.txt and too_small_for_undershoot.txt) that cannot be fit into the file size / undershoot limit, even after going through all available settings
 
 ```
 Usage: convert.sh [-h] [-t] [-a] [-q] [-n] [-s file_size_limit] [-u undershoot_limit] [-f filters]
@@ -60,7 +60,7 @@ General:
 - [x] Trim each video individually (default: off)  
 - [x] Apply filters to all videos  
 - [x] Use each video's file name for the title metadata  
-- [x] List input files that cannot be forced into the specified size limit
+- [x] List input files that cannot be forced into the specified size / undershoot limit
 - [ ] Set filters for individual videos  
 
 Quality adjustments:  
