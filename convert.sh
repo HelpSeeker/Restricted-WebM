@@ -231,7 +231,7 @@ if [[ "$hq_mode" = true ]]; then
 	bcc_threshold=0.075
 	height_threshold=240
 else
-	bcc_threshold=0.4
+	bcc_threshold=0.04
 	height_threshold=360
 fi
 
