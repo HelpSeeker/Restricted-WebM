@@ -92,7 +92,7 @@ downscale () {
 	while [[ $(bc <<< "$new_bpp < $bcc_threshold") -eq 1 && $new_video_height -gt $height_threshold ]]; do
 		(( new_video_height -= 10 ))
 		new_bpp=$(bc <<< "scale=3; $1*1000/($new_video_height*$new_video_height*$aspect_ratio*$frame_rate)")
-		scaling_factor="-vf scale=-1:$new_video_height"
+		scaling_factor="scale=-1:$new_video_height"
 	done
 }
 
@@ -123,15 +123,27 @@ video () {
 
 # The actual ffmpeg conversion commands
 convert () {
+	if [[ -n $scaling_factor && -n $filter_settings ]]; then
+		filter="-filter_complex "
+		filter="${filter}$filter_settings,"
+		filter="${filter}$scaling_factor"
+	elif [[ -z $scaling_factor && -z $filter_settings ]]; then
+		filter=""
+	else
+		filter="-filter_complex "
+		filter="${filter}$filter_settings"
+		filter="${filter}$scaling_factor"
+	fi
+
 	if [[ $(bc <<< "$new_bpp >= 0.075") -eq 1 ]]; then
 		echo -e "\\n\\n\\n"
 		ffmpeg -y -hide_banner -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 $audio_settings -pass 1 -f webm /dev/null
 		echo -e "\\n\\n\\n"
-		ffmpeg -y -hide_banner -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${1%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $scaling_factor $filter_settings $audio_settings -pass 2 "../done/${1%.*}.webm"
+		ffmpeg -y -hide_banner -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${1%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${1%.*}.webm"
 		rm ffmpeg2pass-0.log
 	else
 		echo -e "\\n\\n\\n"
-		ffmpeg -y -hide_banner -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${1%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $scaling_factor $filter_settings $audio_settings "../done/${1%.*}.webm"
+		ffmpeg -y -hide_banner -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${1%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings "../done/${1%.*}.webm"
 	fi
 }
 
@@ -171,7 +183,7 @@ limiter () {
 			fi
 		fi
 		
-		if [[ $new_video_bitrate -lt $last_video_bitrate  || $new_video_bitrate -gt $(bc <<< "($last_video_bitrate*1.5+0.5)/1") ]]; then contains "$filter_settings" "scale" || { downscale "$new_video_bitrate" && framedrop; }; fi
+		if [[ $new_video_bitrate -lt $last_video_bitrate || $new_video_bitrate -gt $(bc <<< "($last_video_bitrate*1.5+0.5)/1") ]]; then contains "$filter_settings" "scale" || { downscale "$new_video_bitrate" && framedrop; }; fi
 		
 		if [[ "$counter" -le 8 ]]; then 
 			video "$counter"
@@ -209,7 +221,7 @@ while getopts ":htaqns:u:f:" ARG; do
 	n) new_codecs=true;;
 	s) file_size="$OPTARG";;
 	u) undershoot_limit="$OPTARG";;
-	f) filter_settings="-filter_complex $OPTARG";;
+	f) filter_settings="$OPTARG";;
 	*) echo "Unknown flag used. Use $0 -h to show all available options." && exit;;
 	esac;
 done
