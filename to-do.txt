@@ -1,19 +1,22 @@
--) Think of a way to customize single files (different sub-folders for differnt settings?)
--) Add warning if audio bitrate leads to a negative video bitrate for very long videos (skip file and put info into txt file)
--) Find a way to read user defined scale in order to use height/width in calculations (very low priority as I think it's pretty complicated for minimal gain)
--) Add audio showcase mode. Use static image as video stream, reduce framerate to 1fps, increase keyframe interval and use higher audio bitrate
+Stuff that still needs to be implemented / fixed (sorted by priority):
 
--) Improve limiter function
-	-> Add iterations flag to define how many times the video bitrate should be adjusted for each bitrate mode
-	-> Use video function only to choose bitrate mode
-	-> Use for-loops for the bitrate adjustment of each mode
-	-> Create bitrate adjustment function to clean up limiter
-	-> Seperate function in case of too small files, as the steps taken should differ from the normal limiter (further adjusting bitrate instead of switching bitrate mode)
+	-) Test new adjuster function to make sure it works flawlessly
+
+	-) Circumvent unnecessary encoding if the last attempt is also the best try
+
+	-) Add audio showcase mode. Use static image as video stream, reduce framerate to 1fps, increase keyframe interval and use higher audio bitrate
+
+	-) Improve HQ mode
+		-> Force the user to specify how much to further downscale and/or trim the video if downscale+framedrop isn't enough to reach bpp threshold
+		-> Add additional requirements (bitrate?) for 2-pass encoding
+
+	-) Improve audio function
+		-> Increase max. possible audio bitrate to 192kbps
+		-> Tweak the current makeshift function to choose the audio bitrate
+		
+	-) Add warning / force user input if audio bitrate leads to a negative video bitrate (low priority as it only happens with insane video length / file size combos)
+		
+	-) Think of a way to customize single files (different sub-folders for differnt settings?)
+
+	-) Find a way to read user defined scale in order to use height/width in calculations (very low priority as I think it's pretty complicated for minimal gain)
 	
--) Improve audio function
-	-> Increase max. possible audio bitrate to 192kbps
-	-> Tweak the current makeshift function to choose the audio bitrate
-	
--) Improve HQ mode
-	-> Force the user to specify how much to further downscale and/or trim the video if downscale+framedrop isn't enough to reach bpp threshold
-	-> Add additional requirements (bitrate?) for 2-pass encoding

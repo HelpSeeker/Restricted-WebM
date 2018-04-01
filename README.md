@@ -7,26 +7,28 @@ The main goal is to produce webms that fit within a specified size limit, while 
 
 1. Calculates video bitrate based on the file size limit, (trimmed) input video length and audio bitrate (also based on size limit/length).  
 2. Downscales the video to ensure a minimum bits per pixel value (>= 0.04 for normal, >=0.075 for HQ mode) is reached. Stops at 360p (240p with HQ mode), even if bpp value is still too low. Automatic downscaling is disabled if the scale filter is used manually.  
-3. Reduces the framerate if the bpp value is still below its threshold at the minimum resolution. Only affects input files with a framerate above 24fps when automatic downscaling is active.
+3. Reduces the framerate if the bpp value is still below its threshold at the minimum resolution. Only affects input files with a framerate above 24fps when automatic downscaling is active.  
 4. Encodes a webm with variable bitrate mode and a minimum crf value. Uses 2-pass encoding if bits per pixel value is high enough (>= 0.075).  
-5. Adjusts bitrate if the produced webm is larger than the specified limit or smaller than a certain percentage of the limit (default 75%).
-6. Loops through different video encoding settings (variable bitrate without minimum crf -> constant bitrate -> constant bitrate and allows ffmpeg to drop frames) trying both the first calculated and adjusted bitrate.  
-7. (Optional, depending on the produced webms) Creates a list of files (too_large.txt and too_small_for_undershoot.txt) that cannot be fit into the file size / undershoot limit, even after going through all available settings
+5. Adjusts encoding settings if the produced webm is larger than the specified limit or smaller than a certain percentage of the limit (default 75%).  
+6.1. (if too large) Loops through different video encoding settings (variable bitrate without minimum crf -> constant bitrate -> constant bitrate ) starting with the originally calculated bitrate and adjusting it i times (can be specified by user; default value is 2). Note: Since the minimum crf value produces a certain minimum file size, the script may skip ahead to the next bitrate mode to avoid useless encoding attempts.  
+6.2. (if too small) Only adjusts bitrate to increase file size (doesn't loop through bitrate modes anymore). May lead to less downscaling and the original framerate being restored. Saves the settings, for the best attempt of reaching the undershoot limit while staying within the file size limit and utilizes them, if unable to reach said file size range after 2*i iterations.
+7. (Optional, depending on the produced webms) Creates a list of files (too_large.txt and too_small_for_undershoot.txt) that cannot be fit into the file size / undershoot limit, even after going through all available steps.  
 
 ```
-Usage: convert.sh [-h] [-t] [-a] [-q] [-n] [-s file_size_limit] [-u undershoot_limit] [-f filters]
+Usage: convert.sh [-h] [-t] [-a] [-q] [-n] [-s file_size_limit] [-u undershoot_limit] [-i iterations] [-f filters]
 	-h: Show Help
 	-t: Enable trim mode. Lets you specify which part of the input video(s) to encode
-	-a: Enable audio encoding. Bitrate gets chosen automatically.
-	-q: Enable HQ (high quality) mode. The script tries to raise the bpp value high enough to use 2-pass encoding. Audio bitrate fixed at 96kbps. Doesn't work if you manually use the scale filter.
-	-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis. Will lead to even longer encoding times, but offers a better quality (especially at low bitrates). Also note that 4chan doesn't support VP9/Opus webms.
-	-s file_size_limit: Specify the file size limit in MB. Default value is 3.
+	-a: Enable audio encoding. Bitrate gets chosen automatically
+	-q: Enable HQ (high quality) mode. The script tries to raise the bpp value high enough to use 2-pass encoding. Audio bitrate fixed at 96kbps. Doesn't work if you manually use the scale filter
+	-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis. Will lead to even longer encoding times, but offers a better quality (especially at low bitrates). Also note that 4chan doesn't support VP9/Opus webms
+	-s file_size_limit: Specify the file size limit in MB. Default value is 3
 		4chan limits:
 			/gif/ and /wsg/: 4MB - audio allowed - max. 300 seconds
 			all other boards: 3MB - no audio allowed - max. 120 seconds
 		8chan limits:
 			all boards: 8MB - audio allowed
 	-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.75 (75%). Very high values may lead to worse results (since the script has to fall back on its last video encoding setting)
+	-i iterations: Define how many times the script tries to adjust the bitrate for each bitrate mode. Default value is 2
 	-f filters: Add filters that you want to apply (with settings). Be careful to type them as you would normally with ffmpeg. Refer to ffmpeg's documentation for further information
 
 ```

@@ -6,19 +6,20 @@
 
 # Defines help text
 usage () {
-	echo -e "Usage: $0 [-h] [-t] [-a] [-q] [-n] [-s file_size_limit] [-u undershoot_limit] [-f filters]"
+	echo -e "Usage: $0 [-h] [-t] [-a] [-q] [-n] [-s file_size_limit] [-u undershoot_limit] [-i iterations] [-f filters]"
 	echo -e "\\t-h: Show Help"
 	echo -e "\\t-t: Enable trim mode. Lets you specify which part of the input video(s) to encode"
-	echo -e "\\t-a: Enable audio encoding. Bitrate gets chosen automatically."
+	echo -e "\\t-a: Enable audio encoding. Bitrate gets chosen automatically"
 	echo -e "\\t-q: Enable HQ (high quality) mode. The script tries to raise the bpp value high enough to use 2-pass encoding. Audio bitrate fixed at 96kbps. Doesn't work if you manually use the scale filter."
-	echo -e "\\t-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis. Will lead to even longer encoding times, but offers a better quality (especially at low bitrates). Also note that 4chan doesn't support VP9/Opus webms."
-	echo -e "\\t-s file_size_limit: Specify the file size limit in MB. Default value is 3."
+	echo -e "\\t-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis. Will lead to even longer encoding times, but offers a better quality (especially at low bitrates). Also note that 4chan doesn't support VP9/Opus webms"
+	echo -e "\\t-s file_size_limit: Specify the file size limit in MB. Default value is 3"
 	echo -e "\\t\\t4chan limits:"
 	echo -e "\\t\\t\\t/gif/ and /wsg/: 4MB - audio allowed - max. 300 seconds"
 	echo -e "\\t\\t\\tall other boards: 3MB - no audio allowed - max. 120 seconds"
 	echo -e "\\t\\t8chan limits:"
 	echo -e "\\t\\t\\tall boards: 8MB - audio allowed"
 	echo -e "\\t-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.75 (75%). Very high values may lead to worse results (since the script has to fall back on its last video encoding setting)"
+	echo -e "\\t-i iterations: Define how many times the script tries to adjust the bitrate for each bitrate mode. Default value is 2"
 	echo -e "\\t-f filters: Add filters that you want to apply (with settings). Be careful to type them as you would normally with ffmpeg. Refer to ffmpeg's documentation for further information"
 }
 
@@ -33,16 +34,16 @@ contains () {
 
 # Uses ffprobe to get video properties for later calculations
 info () {
-	length=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$1")
-	frame_rate=$(ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of default=noprint_wrappers=1:nokey=1 "$1")
-	video_height=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of default=noprint_wrappers=1:nokey=1 "$1")
-	video_width=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=noprint_wrappers=1:nokey=1 "$1")
+	length=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$input")
+	frame_rate=$(ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of default=noprint_wrappers=1:nokey=1 "$input")
+	video_height=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of default=noprint_wrappers=1:nokey=1 "$input")
+	video_width=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=noprint_wrappers=1:nokey=1 "$input")
 	aspect_ratio=$(bc <<< "scale=3; $video_width/$video_height")
 }
 
 # Asks user where to start and end each video and use it to calculate the video's duration
 trim () {
-	echo "Current file: $1"
+	echo "Current file: $input"
 	echo "Please specify where to start encoding (in seconds). Leave empty to start at the beginning of the input video."
 	read -r start_time
 	[[ -z $start_time ]] && start_time=0
@@ -57,31 +58,27 @@ trim () {
 audio () {
 	if [[ "$hq_mode" = true ]]; then
 		audio_bitrate=96
-		audio_channels=2
 	else
 		audio_factor=$(bc <<< "$file_size*8*1000/($duration*5.5*32)")
-		if [[ $audio_factor -eq 0 ]]; then audio_channels=1; else audio_channels=2; fi
 		case $audio_factor in
 			0) audio_bitrate=48;;
 			1) audio_bitrate=64;;
 			2 | 3 | 4 | 5 | 6) audio_bitrate=96;;
 			*) audio_bitrate=128;;
 		esac
-		if [[ $audio_factor -le 1 ]]; then audio_channels=1; else audio_channels=2; fi
 	fi
 	
 	if [[ "$new_codecs" = true ]]; then
-		audio_settings="-c:a libopus -ac $audio_channels -ar 48000 -b:a ${audio_bitrate}K"
+		audio_settings="-c:a libopus -ac 2 -ar 48000 -b:a ${audio_bitrate}K"
 		# -ar 48000, because Opus only allows certain sampling rates (48000, 24000, 16000, 12000, 8000)
 	else
-		audio_settings="-c:a libvorbis -ac $audio_channels -ar 44100 -b:a ${audio_bitrate}K"
+		audio_settings="-c:a libvorbis -ac 2 -ar 44100 -b:a ${audio_bitrate}K"
 	fi
 }
 
 # Calculates important values for the encoding process
 calc () {
 	video_bitrate=$(bc <<< "($file_size*8*1000/$duration-$audio_bitrate+0.5)/1")
-	(( bufsize = $video_bitrate*5 ))
 	bpp=$(bc <<< "scale=3; $video_bitrate*1000/($video_height*$video_width*$frame_rate)")
 }
 
@@ -89,7 +86,7 @@ calc () {
 downscale () {
 	new_video_height=$video_height
 	new_bpp=$bpp
-	while [[ $(bc <<< "$new_bpp < $bcc_threshold") -eq 1 && $new_video_height -gt $height_threshold ]]; do
+	while (( $(bc <<< "$new_bpp < $bcc_threshold") && new_video_height > height_threshold )); do
 		(( new_video_height -= 10 ))
 		new_bpp=$(bc <<< "scale=3; $1*1000/($new_video_height*$new_video_height*$aspect_ratio*$frame_rate)")
 		scaling_factor="scale=-1:$new_video_height"
@@ -99,25 +96,41 @@ downscale () {
 # Reduces framerate if bpp value is too low and the input video has a framerate above 24 fps
 # frame_settings introduced in case of further adjustments regarding keyframe intervals
 framedrop () {
-	if [[ $(bc <<< "$new_bpp < $bcc_threshold") -eq 1 && $(bc <<< "$frame_rate > 24") -gt 1 ]]; then
+	if (( $(bc <<< "$new_bpp < $bcc_threshold") && $(bc <<< "$frame_rate > 24") )); then
 		new_frame_rate=24
 		frame_settings="-r $new_frame_rate"
+	else 
+		frame_settings=""
+	fi
+}
+
+# Calculates adjusted bitrate
+bitrate () {
+	if (( $1 == 1 )); then
+		last_video_bitrate=$video_bitrate
+		new_video_bitrate=$video_bitrate
+	else
+		last_video_bitrate=$new_video_bitrate
+		new_video_bitrate=$(bc <<< "($last_video_bitrate*$file_size*1024*1024/$webm_size+0.5)/1")
+		difference=$(( last_video_bitrate - new_video_bitrate ))
+		if (( $(bc <<< "${difference#-} < $last_video_bitrate*0.1") && difference > 0 )); then
+			new_video_bitrate=$(bc <<< "($last_video_bitrate/1.1+0.5)/1")
+		elif (( $(bc <<< "${difference#-} < $last_video_bitrate*0.1") && difference < 0 )); then
+			new_video_bitrate=$(bc <<< "($last_video_bitrate*1.1+0.5)/1")
+		fi
 	fi
 }
 
 # Defines which video codec and bitrate mode to use
+# Needs number of bitrate mode and video bitrate as input
 video () {
 	if [[ "$new_codecs" = true ]]; then video_codec="libvpx-vp9"; else video_codec="libvpx"; fi
 	case $1 in
-		0) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${video_bitrate}K";;
-		1 | 2) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${new_video_bitrate}K";;
-		3) video_settings="-c:v $video_codec -crf 10 -b:v ${video_bitrate}K";;	
-		4 | 5) video_settings="-c:v $video_codec -crf 10 -b:v ${new_video_bitrate}K";;	
-		6) video_settings="-c:v $video_codec -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K";;
-		7 | 8) video_settings="-c:v $video_codec -minrate:v ${new_video_bitrate}K -maxrate:v ${new_video_bitrate}K -b:v ${new_video_bitrate}K";;
-		# 9) video_settings="-c:v $video_codec -bufsize $bufsize -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K -skip_threshold 100";;
-		b) { echo "File can't be fit in the specified file size/undershoot limit. Please use ffmpeg manually." && rm "../done/${input%.*}.webm" && echo "$input" >> ../too_small_for_undershoot.txt; };;
-		*) { echo "File still doesn't fit the specified limit. Please use ffmpeg manually." && rm "../done/${input%.*}.webm" && echo "$input" >> ../too_large.txt; };;
+		1) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${2}K";;
+		2) video_settings="-c:v $video_codec -crf 10 -b:v ${2}K";;	
+		3) video_settings="-c:v $video_codec -minrate:v ${2}K -maxrate:v ${2}K -b:v ${2}K";;
+		# 4) video_settings="-c:v $video_codec -bufsize $bufsize -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K -skip_threshold 100";;
+		*) echo "Unknown bitrate mode!";;
 	esac
 }
 
@@ -135,75 +148,95 @@ convert () {
 		filter="${filter}$scaling_factor"
 	fi
 
-	if [[ $(bc <<< "$new_bpp >= 0.075") -eq 1 ]]; then
+	if (( $(bc <<< "$new_bpp >= 0.075") )); then
 		echo -e "\\n\\n\\n"
-		ffmpeg -y -hide_banner -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 $audio_settings -pass 1 -f webm /dev/null
+		ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 $audio_settings -pass 1 -f webm /dev/null
 		echo -e "\\n\\n\\n"
-		ffmpeg -y -hide_banner -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${1%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${1%.*}.webm"
+		ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
 		rm ffmpeg2pass-0.log
 	else
 		echo -e "\\n\\n\\n"
-		ffmpeg -y -hide_banner -ss $start_time -i "$1" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${1%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings "../done/${1%.*}.webm"
+		ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings "../done/${input%.*}.webm"
 	fi
 }
 
 # Function to summarize the first encoding cycle.
 initial_encode () {
 	contains "$filter_settings" "scale" || { downscale "$video_bitrate" && framedrop; }
-	video 0
-	convert "$1"
+	bitrate 1
+	video 1 "$video_bitrate"
+	convert
 }
 
-# Loops through the different video settings if the webm is too large/small
-# Every setting can be done twice: Once with the original calculated and once with an adjusted bitrate
-limiter () {
+# Quality adjustment to raise output above undershoot limit
+enhance () {
+	i=2
+	while (( $(bc <<< "$webm_size > $file_size*1024*1024") || $(bc <<< "$webm_size < $file_size*1024*1024*$undershoot_limit") )); do
+		bitrate "$i"
+		if (( new_video_bitrate < last_video_bitrate || $(bc <<< "$new_video_bitrate > $last_video_bitrate*1.4") )); then contains "$filter_settings" "scale" || { downscale "$new_video_bitrate" && framedrop; }; fi
+		video "$1" "$new_video_bitrate"
+		convert
+		webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm")
+		#echo "Debug mode: Enter webm size."
+		#read -r webm_size
+		if (( webm_size > best_try && $(bc <<< "$webm_size < $file_size*1024*1024") )); then
+			best_try=$webm_size
+			best_try_bitrate=$new_video_bitrate
+		fi
+		if (( i > adjust_iterations*2 )); then
+			use_best_try=true
+			video "$1" "$best_try_bitrate"
+			convert
+			break
+		fi
+		(( i += 1 ))
+	done
+}
+
+# Quality adjustment to force output into the file size limit
+limit () {
+	if (( $1 == 1 )); then start=2; else start=1; fi
+	for (( i = start; i <= adjust_iterations; i++ ))
+	do
+		bitrate "$i"
+		if (( new_video_bitrate < last_video_bitrate )); then contains "$filter_settings" "scale" || { downscale "$new_video_bitrate" && framedrop; }; fi
+		video "$1" "$new_video_bitrate"
+		convert
+		webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm")
+		#echo "Debug mode: Enter webm size."
+		#read -r webm_size
+		if (( $1 == 1 && $(bc <<< "$webm_size < $first_try*1.01") && $(bc <<< "$webm_size > $first_try*0.99") )); then break; fi
+		if (( $(bc <<< "$webm_size < $file_size*1024*1024") )); then break; fi
+	done
+}
+
+# Decides what steps to take based on the webm of the initial encode
+adjuster () {
 	#echo "Debug mode: Enter webm size."
 	#read -r webm_size
-	webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${1%.*}.webm")
-	counter=0
-	last_video_bitrate=$video_bitrate
-	while [[ $webm_size -gt $(bc <<< "($file_size*1024*1024+0.5)/1") || $webm_size -lt $(bc <<< "($file_size*1024*1024*$undershoot_limit+0.5)/1") ]]; do
-		
-		if [[ $webm_size -lt $(bc <<< "($file_size*1024*1024+0.5)/1") && -z $best_try_counter ]]; then
-			best_try_counter=$counter
+	webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm")
+	first_try=$webm_size
+	mode_counter=1
+	use_best_try=false
+	while (( $(bc <<< "$webm_size > $file_size*1024*1024") || $(bc <<< "$webm_size < $file_size*1024*1024*$undershoot_limit") )); do
+		if [[ "$use_best_try" = true ]]; then
+			echo "Failed to raise output file size above undershoot limit." 
+			rm "../done/${input%.*}.webm" 
+			echo "$input" >> ../too_small_for_undershoot.txt
+			break
+		elif (( mode_counter > 3 )); then
+			echo "File still doesn't fit the specified limit. Please use ffmpeg manually." 
+			rm "../done/${input%.*}.webm" 
+			echo "$input" >> ../too_large.txt
+			break
+		elif (( $(bc <<< "$webm_size > $file_size*1024*1024") )); then
+			limit $mode_counter
+		elif (( $(bc <<< "$webm_size < $file_size*1024*1024*$undershoot_limit") )); then
+			best_try=$webm_size
 			best_try_bitrate=$last_video_bitrate
+			enhance $mode_counter
 		fi
-		
-		(( counter += 1 ))
-		
-		if [[ $(($counter%3)) -eq 0 ]]; then
-			new_video_bitrate=$video_bitrate
-		else
-			new_video_bitrate=$(bc <<< "($last_video_bitrate*$file_size*1024*1024/$webm_size+0.5)/1")
-			difference=$(($last_video_bitrate-$new_video_bitrate))
-			if [[ ${difference#-} -lt $(bc <<< "($last_video_bitrate*0.1+0.5)/1") && $difference -gt 0 ]]; then
-				new_video_bitrate=$(bc <<< "($last_video_bitrate/1.1+0.5)/1")
-			elif [[ ${difference#-} -lt $(bc <<< "($last_video_bitrate*0.1+0.5)/1") && $difference -lt 0 ]]; then
-				new_video_bitrate=$(bc <<< "($last_video_bitrate*1.1+0.5)/1")
-			fi
-		fi
-		
-		if [[ $new_video_bitrate -lt $last_video_bitrate || $new_video_bitrate -gt $(bc <<< "($last_video_bitrate*1.5+0.5)/1") ]]; then contains "$filter_settings" "scale" || { downscale "$new_video_bitrate" && framedrop; }; fi
-		
-		if [[ "$counter" -le 8 ]]; then 
-			video "$counter"
-			convert "$1" 
-			last_video_bitrate=$new_video_bitrate
-			#echo "Debug mode: Enter webm size."
-			#read -r webm_size
-			webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${1%.*}.webm")
-		else
-			if [[ -n $best_try_counter ]]; then
-				video "b"
-				new_video_bitrate=$best_try_bitrate
-				video "best_try_counter"
-				convert "$1"
-				break
-			else
-				video "$counter"
-				break
-			fi
-		fi
+		(( mode_counter += 1 ))
 	done
 }
 
@@ -212,7 +245,7 @@ limiter () {
 ####################
 
 # Read input parameters and assigns values accordingly
-while getopts ":htaqns:u:f:" ARG; do
+while getopts ":htaqns:u:i:f:" ARG; do
 	case "$ARG" in
 	h) usage && exit;;
 	t) trim_mode=true;;
@@ -221,6 +254,7 @@ while getopts ":htaqns:u:f:" ARG; do
 	n) new_codecs=true;;
 	s) file_size="$OPTARG";;
 	u) undershoot_limit="$OPTARG";;
+	i) adjust_iterations="$OPTARG";;
 	f) filter_settings="$OPTARG";;
 	*) echo "Unknown flag used. Use $0 -h to show all available options." && exit;;
 	esac;
@@ -233,6 +267,7 @@ done
 [[ -z $new_codecs ]] && new_codecs=false
 [[ -z $file_size ]] && file_size=3
 [[ -z $undershoot_limit ]] && undershoot_limit=0.75
+[[ -z $adjust_iterations ]] && adjust_iterations=2
 
 # Set default conversion variables that are the same for all files
 # Might get overwritten if the corresponding flags are set
@@ -257,14 +292,14 @@ mkdir ../done 2> /dev/null
 
 # The main conversion loop
 for input in *; do (
-	info "$input"
+	info
 	# Duration is different for each file, so it must be defined for each file seperately
 	duration=$length
-	if [[ "$trim_mode" = true ]]; then trim "$input"; fi
+	if [[ "$trim_mode" = true ]]; then trim; fi
 	if [[ "$audio_mode" = true ]]; then audio; fi
 	calc
-	initial_encode "$input"
-	limiter "$input"
+	initial_encode
+	adjuster
 	
 	# Print various variables for debugging purposes
 	#~ echo "Duration: $duration"
