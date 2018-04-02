@@ -221,12 +221,10 @@ adjuster () {
 	while (( $(bc <<< "$webm_size > $file_size*1024*1024") || $(bc <<< "$webm_size < $file_size*1024*1024*$undershoot_limit") )); do
 		if [[ "$use_best_try" = true ]]; then
 			echo "Failed to raise output file size above undershoot limit." 
-			rm "../done/${input%.*}.webm" 
 			echo "$input" >> ../too_small_for_undershoot.txt
 			break
 		elif (( mode_counter > 3 )); then
 			echo "File still doesn't fit the specified limit. Please use ffmpeg manually." 
-			rm "../done/${input%.*}.webm" 
 			echo "$input" >> ../too_large.txt
 			break
 		elif (( $(bc <<< "$webm_size > $file_size*1024*1024") )); then
