@@ -6,11 +6,15 @@
 
 # Defines help text
 usage () {
-	echo -e "Usage: $0 [-h] [-t] [-a] [-q] [-n] [-s file_size_limit] [-u undershoot_limit] [-i iterations] [-f filters]"
+	echo -e "Usage: $0 [-h] [-t] [-a] [-q] [-c { auto | manual | video }] [-n] [-s file_size_limit] [-u undershoot_limit] [-i iterations] [-f filters]"
 	echo -e "\\t-h: Show Help"
 	echo -e "\\t-t: Enable trim mode. Lets you specify which part of the input video(s) to encode"
 	echo -e "\\t-a: Enable audio encoding. Bitrate gets chosen automatically"
 	echo -e "\\t-q: Enable HQ (high quality) mode. The script tries to raise the bpp value high enough to use 2-pass encoding. Audio bitrate fixed at 96kbps. Doesn't work if you manually use the scale filter."
+	echo -e "\\t-c { auto | manual | video }: Enable audio showcase mode. Encode video with a high audio bitrate at 1 fps. Intended to produce webms with a static picture as video stream. Supersedes -a, -u and -q flag."
+	echo -e "\\t\\tauto: Search for picture with matching filename in showcase_pictures"
+	echo -e "\\t\\tmanual: Enter picture's path manually for each video"
+	echo -e "\\t\\tvideo: Apply audio showcase mode settings to videos in to_convert"
 	echo -e "\\t-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis. Will lead to even longer encoding times, but offers a better quality (especially at low bitrates). Also note that 4chan doesn't support VP9/Opus webms"
 	echo -e "\\t-s file_size_limit: Specify the file size limit in MB. Default value is 3"
 	echo -e "\\t\\t4chan limits:"
@@ -35,10 +39,14 @@ contains () {
 # Uses ffprobe to get video properties for later calculations
 info () {
 	length=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$input")
-	frame_rate=$(ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of default=noprint_wrappers=1:nokey=1 "$input")
 	video_height=$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of default=noprint_wrappers=1:nokey=1 "$input")
 	video_width=$(ffprobe -v error -select_streams v:0 -show_entries stream=width -of default=noprint_wrappers=1:nokey=1 "$input")
 	aspect_ratio=$(bc <<< "scale=3; $video_width/$video_height")
+	if [[ "$showcase" = true ]]; then
+		frame_rate=1
+	else
+		frame_rate=$(ffprobe -v error -select_streams v:0 -show_entries stream=avg_frame_rate -of default=noprint_wrappers=1:nokey=1 "$input")
+	fi
 }
 
 # Asks user where to start and end each video and use it to calculate the video's duration
@@ -58,6 +66,14 @@ trim () {
 audio () {
 	if [[ "$hq_mode" = true ]]; then
 		audio_bitrate=96
+	elif [[ "$showcase" = true ]]; then
+		audio_factor=$(bc <<< "$file_size*8*1000/($duration*32)")
+		case $audio_factor in
+			0 | 1 | 2 | 3) audio_bitrate=96;;
+			4) audio_bitrate=128;;
+			5) audio_bitrate=160;;
+			*) audio_bitrate=192;;
+		esac
 	else
 		audio_factor=$(bc <<< "$file_size*8*1000/($duration*5.5*32)")
 		case $audio_factor in
@@ -78,12 +94,18 @@ audio () {
 
 # Calculates important values for the encoding process
 calc () {
-	video_bitrate=$(bc <<< "($file_size*8*1000/$duration-$audio_bitrate+0.5)/1")
+	# if [[ "$showcase" = true ]]; then
+		# Should lead to better results with the downscaler
+	#	video_bitrate=$(bc <<< "($file_size*8*1000/$duration+0.5)/1")
+	#else	
+		video_bitrate=$(bc <<< "($file_size*8*1000/$duration-$audio_bitrate+0.5)/1")
+	#fi
 	bpp=$(bc <<< "scale=3; $video_bitrate*1000/($video_height*$video_width*$frame_rate)")
 }
 
 # Reduces output height (width is later adjusted via aspect ratio) to reach certain bits per pixel value; min. output height is 360p
 downscale () {
+	use_downscale=true
 	new_video_height=$video_height
 	new_bpp=$bpp
 	while (( $(bc <<< "$new_bpp < $bcc_threshold") && new_video_height > height_threshold )); do
@@ -96,11 +118,13 @@ downscale () {
 # Reduces framerate if bpp value is too low and the input video has a framerate above 24 fps
 # frame_settings introduced in case of further adjustments regarding keyframe intervals
 framedrop () {
-	if (( $(bc <<< "$new_bpp < $bcc_threshold") && $(bc <<< "$frame_rate > 24") )); then
-		new_frame_rate=24
-		frame_settings="-r $new_frame_rate"
-	else 
-		frame_settings=""
+	if [[ "$use_downscale" = true && "$showcase" = false ]]; then
+		if (( $(bc <<< "$new_bpp < $bcc_threshold") && $(bc <<< "$frame_rate > 24") )); then
+			new_frame_rate=24
+			frame_settings="-r $new_frame_rate"
+		else 
+			frame_settings=""
+		fi
 	fi
 }
 
@@ -122,16 +146,37 @@ bitrate () {
 }
 
 # Defines which video codec and bitrate mode to use
-# Needs number of bitrate mode and video bitrate as input
+# Needs number of bitrate mode and video bitrate as input, unless showcase mode is being used
 video () {
 	if [[ "$new_codecs" = true ]]; then video_codec="libvpx-vp9"; else video_codec="libvpx"; fi
-	case $1 in
-		1) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${2}K";;
-		2) video_settings="-c:v $video_codec -crf 10 -b:v ${2}K";;	
-		3) video_settings="-c:v $video_codec -minrate:v ${2}K -maxrate:v ${2}K -b:v ${2}K";;
-		# 4) video_settings="-c:v $video_codec -bufsize $bufsize -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K -skip_threshold 100";;
-		*) echo "Unknown bitrate mode!";;
-	esac
+	if [[ "$showcase" = true ]]; then
+		video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v 10M"
+	else
+		case $1 in
+			1) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${2}K";;
+			2) video_settings="-c:v $video_codec -crf 10 -b:v ${2}K";;	
+			3) video_settings="-c:v $video_codec -minrate:v ${2}K -maxrate:v ${2}K -b:v ${2}K";;
+			# 4) video_settings="-c:v $video_codec -bufsize $bufsize -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K -skip_threshold 100";;
+			*) echo "Unknown bitrate mode!";;
+		esac
+	fi
+}
+
+# Get path to picture for audio showcase mode
+pathFinder () {
+	if [[ "$showcase_mode" = "manual" ]]; then
+		echo "Manual audio showcase mode:"
+		echo "Enter image path for $input"
+		read -r picture_path
+	elif [[ "$showcase_mode" = "auto" ]]; then
+		picture_path=$(find ./showcase_pictures/ -type f -name "${input%.*}.*")
+	fi
+}
+
+# Define frame_settings for audio showcase mode
+showcaseSettings () {
+	keyframe_interval=$(( 10 * $1 ))
+	frame_settings="-r $frame_rate -g $keyframe_interval"
 }
 
 # The actual ffmpeg conversion commands
@@ -147,22 +192,36 @@ convert () {
 		filter="${filter}$filter_settings"
 		filter="${filter}$scaling_factor"
 	fi
-
-	if (( $(bc <<< "$new_bpp >= 0.075") )); then
-		echo -e "\\n\\n\\n"
-		ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 $audio_settings -pass 1 -f webm /dev/null
-		echo -e "\\n\\n\\n"
-		ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
-		rm ffmpeg2pass-0.log
+	
+	if [[ "$showcase_mode" = "auto" || "$showcase_mode" = "manual" ]]; then
+		if (( $(bc <<< "$new_bpp >= 0.075") )); then
+			echo -e "\\n\\n\\n"
+			ffmpeg -y -hide_banner -loop 1 -ss $start_time -i "$input" -i "$picture_path" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 $audio_settings -pass 1 -f webm /dev/null
+			echo -e "\\n\\n\\n"
+			ffmpeg -y -hide_banner -loop 1 -ss $start_time -i "$input" -i "$picture_path" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
+			rm ffmpeg2pass-0.log
+		else
+			echo -e "\\n\\n\\n"
+			ffmpeg -y -hide_banner -loop 1 -ss $start_time -i "$input" -i -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings "../done/${input%.*}.webm"
+		fi
 	else
-		echo -e "\\n\\n\\n"
-		ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings "../done/${input%.*}.webm"
+		if (( $(bc <<< "$new_bpp >= 0.075") )); then
+			echo -e "\\n\\n\\n"
+			ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 $audio_settings -pass 1 -f webm /dev/null
+			echo -e "\\n\\n\\n"
+			ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
+			rm ffmpeg2pass-0.log
+		else
+			echo -e "\\n\\n\\n"
+			ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings "../done/${input%.*}.webm"
+		fi
 	fi
 }
 
 # Function to summarize the first encoding cycle.
-initial_encode () {
-	contains "$filter_settings" "scale" || { downscale "$video_bitrate" && framedrop; }
+initialEncode () {
+	contains "$filter_settings" "scale" || downscale "$video_bitrate"
+	framedrop
 	bitrate 1
 	video 1 "$video_bitrate"
 	convert
@@ -173,7 +232,8 @@ enhance () {
 	i=2
 	while (( $(bc <<< "$webm_size > $file_size*1024*1024") || $(bc <<< "$webm_size < $file_size*1024*1024*$undershoot_limit") )); do
 		bitrate "$i"
-		if (( new_video_bitrate < last_video_bitrate || $(bc <<< "$new_video_bitrate > $last_video_bitrate*1.4") )); then contains "$filter_settings" "scale" || { downscale "$new_video_bitrate" && framedrop; }; fi
+		if (( new_video_bitrate < last_video_bitrate || $(bc <<< "$new_video_bitrate > $last_video_bitrate*1.4") )); then contains "$filter_settings" "scale" || downscale "$new_video_bitrate"; fi
+		framedrop
 		video "$1" "$new_video_bitrate"
 		convert
 		webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm")
@@ -199,7 +259,8 @@ limit () {
 	for (( i = start; i <= adjust_iterations; i++ ))
 	do
 		bitrate "$i"
-		if (( new_video_bitrate < last_video_bitrate )); then contains "$filter_settings" "scale" || { downscale "$new_video_bitrate" && framedrop; }; fi
+		if (( new_video_bitrate < last_video_bitrate )); then contains "$filter_settings" "scale" || downscale "$new_video_bitrate"; fi
+		framedrop
 		video "$1" "$new_video_bitrate"
 		convert
 		webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm")
@@ -238,17 +299,36 @@ adjuster () {
 	done
 }
 
+# Reduce file size for audio showcase webms
+# Limited possibilities since ffprobe can't show the size of a single stream
+showcaseAdjuster () {
+	webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm")
+	counter=1
+	while (( $(bc <<< "$webm_size > $file_size*1024*1024") )); do
+		(( counter += 1 ))
+		showcaseSettings "$counter"
+		convert
+		webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm")
+		if (( counter > 6 )); then 
+			echo "File still doesn't fit the specified limit. Please use ffmpeg manually." 
+			echo "$input" >> ../too_large.txt
+			break
+		fi
+	done
+}
+
 ####################
 # Main script 
 ####################
 
 # Read input parameters and assigns values accordingly
-while getopts ":htaqns:u:i:f:" ARG; do
+while getopts ":htaqc:ns:u:i:f:" ARG; do
 	case "$ARG" in
 	h) usage && exit;;
 	t) trim_mode=true;;
 	a) audio_mode=true;;
 	q) hq_mode=true;;
+	c) showcase_mode="$OPTARG";;
 	n) new_codecs=true;;
 	s) file_size="$OPTARG";;
 	u) undershoot_limit="$OPTARG";;
@@ -266,6 +346,15 @@ done
 [[ -z $file_size ]] && file_size=3
 [[ -z $undershoot_limit ]] && undershoot_limit=0.75
 [[ -z $adjust_iterations ]] && adjust_iterations=2
+if [[ -n $showcase_mode ]]; then
+	case $showcase_mode in
+		auto | manual | video) showcase=true;;
+		*) echo "Invalid option for audio showcase mode!" && exit;;
+	esac
+else
+	showcase=false
+fi
+
 
 # Set default conversion variables that are the same for all files
 # Might get overwritten if the corresponding flags are set
@@ -275,6 +364,9 @@ start_time=0
 if [[ "$hq_mode" = true ]]; then
 	bcc_threshold=0.075
 	height_threshold=240
+elif [[ "$showcase" = true ]]; then
+	bcc_threshold=0.075
+	height_threshold=360
 else
 	bcc_threshold=0.04
 	height_threshold=360
@@ -291,13 +383,21 @@ mkdir ../done 2> /dev/null
 # The main conversion loop
 for input in *; do (
 	info
-	# Duration is different for each file, so it must be defined for each file seperately
+	# Define variables which are different for each individual file
 	duration=$length
+	use_downscale=false
 	if [[ "$trim_mode" = true ]]; then trim; fi
-	if [[ "$audio_mode" = true ]]; then audio; fi
+	if [[ "$audio_mode" = true || "$showcase" = true ]]; then audio; fi
 	calc
-	initial_encode
-	adjuster
+	if [[ "$showcase" = true ]]; then
+		pathFinder
+		showcaseSettings 1
+		initialEncode
+		showcaseAdjuster
+	else
+		initialEncode
+		adjuster
+	fi
 	
 	# Print various variables for debugging purposes
 	#~ echo "Duration: $duration"
