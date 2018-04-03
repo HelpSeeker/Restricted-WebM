@@ -1,10 +1,10 @@
 Stuff that still needs to be implemented / fixed (sorted by priority):
 
-	-) Test new adjuster function to make sure it works flawlessly
+	-) Test script thoroughly to make sure it works flawlessly
+	
+	-) Decrease encoding time (e.g. keep log for 2-pass encoding until switching to the next file)
 
 	-) Circumvent unnecessary encoding if the last attempt is also the best try
-
-	-) Add audio showcase mode. Use static image as video stream, reduce framerate to 1fps, increase keyframe interval and use higher audio bitrate
 
 	-) Improve HQ mode
 		-> Force the user to specify how much to further downscale and/or trim the video if downscale+framedrop isn't enough to reach bpp threshold
@@ -14,9 +14,14 @@ Stuff that still needs to be implemented / fixed (sorted by priority):
 		-> Increase max. possible audio bitrate to 192kbps
 		-> Tweak the current makeshift function to choose the audio bitrate
 		
-	-) Add warning / force user input if audio bitrate leads to a negative video bitrate (low priority as it only happens with insane video length / file size combos)
+	-) Add gif support for audio showcase mode
+	
+	-) Read input codecs and copy audio stream if compatible and the bitrate isn't too high
 		
-	-) Think of a way to customize single files (different sub-folders for differnt settings?)
-
+	-) Add warning / force user input if audio bitrate leads to a negative video bitrate (low priority as it only happens with insane video length / file size combos)
+	
+	-) Find cause and fix bug that prevents the usage of best try for very high undershoot limits (low priority, since I only observed it at 99%)
+	
 	-) Find a way to read user defined scale in order to use height/width in calculations (very low priority as I think it's pretty complicated for minimal gain)
 	
+	-) Think of a way to customize single files (different sub-folders for different settings?)
