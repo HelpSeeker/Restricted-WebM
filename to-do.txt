@@ -24,4 +24,4 @@ Stuff that still needs to be implemented / fixed (sorted by priority):
 	
 	-) Find a way to read user defined scale in order to use height/width in calculations (very low priority as I think it's pretty complicated for minimal gain)
 	
-	-) Think of a way to customize single files (different sub-folders for different settings?)
+	-) Think of a way to customize single files (different sub-folders for different settings? / reading options from text file?)

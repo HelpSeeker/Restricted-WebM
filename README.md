@@ -37,11 +37,12 @@ Restricted-Webm/
 ├── convert.sh
 │
 ├── showcase_pictures/ (only when using the audio showcase mode with the auto option)
-│    │ 
-│    │ audio01 (any image expansion allowed)
-│    │ audio02
-│    │ audio03
-│    │ ...
+│     │ 
+│     │ (the following files are pictures with the same name as the audio files in to_convert/)
+│     │ audio01
+│     │ audio02
+│     │ audio03
+│     │ ...
 │
 ├── to_convert/
       │ 
