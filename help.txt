@@ -62,7 +62,7 @@ Options in more detail:
 	The initial video bitrate calculation is no exact science and the final output size heavily depends on what footage the video is showing. The undershoot limit prevents the script from stopping / going to the next video, when it doesn't utilize a certain percentage of the given file size limit (default 75%). Can range from 0 (completely disabled) to 1 (has to be exactly the file size limit). Personally I often use 0.9, which works fine. I wouldn't go higher than 0.95 though, as it only leads to a lot more encoding attempts for a minimal gain.
 
 	Iterations:
-	The script cycles through 3 bitrate modes and during each bitrate mode it adjusts the bitrate several times (default value is 2). Additionally the script will make i*2 attempts (so by default 4) once it got a webm within the file size limit, but not above the undershoot limit. With the -i flag you can specify how many times the script is allowed to adjust the bitrate for each bitrate mode or to reach the undershoot limit.
+	The script cycles through 3 bitrate modes and during each bitrate mode it adjusts the bitrate several times. With the -i flag you can specify how many encoding attempts there will be for each bitrate mode. Additionally the script will make i*2 attempts (so by default 6) once it got a webm within the file size limit, but not above the undershoot limit.
 
 	Filters:
 	Here you can enter your usual ffmpeg filters. This string will be used directly in the ffmpeg command, so it'll throw an error if you make any mistakes in it. Note that using the scale filter will disable automatic downscaling and also any functions that are directly tied to some bpp threshold (most importantly 2-pass encoding).

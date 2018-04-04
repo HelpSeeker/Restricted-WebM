@@ -23,7 +23,7 @@ usage () {
 	echo -e "\\t\\t8chan limits:"
 	echo -e "\\t\\t\\tall boards: 8MB - audio allowed"
 	echo -e "\\t-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.75 (75%)."
-	echo -e "\\t-i iterations: Define how many times the script tries to adjust the bitrate for each bitrate mode. Default value is 2."
+	echo -e "\\t-i iterations: Define how many encoding attempts there will be for each bitrate mode. Default value is 3."
 	echo -e "\\t-f filters: Add custom ffmpeg filters. Refer to ffmpeg's documentation for further information"
 }
 
@@ -203,13 +203,20 @@ convert () {
 			echo -e "\\n\\n\\n"
 			ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
 			echo -e "\\n\\n\\n"
-			ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 -pix_fmt yuv420p $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
+			ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
 			rm ffmpeg2pass-0.log
 		else
 			echo -e "\\n\\n\\n"
-			ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 -pix_fmt yuv420p $filter $audio_settings "../done/${input%.*}.webm"
+			ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings "../done/${input%.*}.webm"
 		fi
 	fi
+	
+	# Print various variables for debugging purposes
+	#~ echo "Audio factor: $audio_factor"
+	#~ echo "Iteration: $i"
+	#~ echo "First try: $first_try"
+	#~ echo "Video settings: $video_settings"
+	#~ echo "Mode counter: $mode_counter"
 }
 
 # Function to summarize the first encoding cycle.
@@ -248,7 +255,7 @@ enhance () {
 
 # Quality adjustment to force output into the file size limit
 limit () {
-	if (( $1 == 1 )); then start=1; else start=0; fi
+	if (( $1 == 1 )); then start=2; else start=1; fi
 	for (( i = start; i <= adjust_iterations; i++ ))
 	do
 		bitrate "$i"
@@ -259,7 +266,7 @@ limit () {
 		#echo "Debug mode: Enter webm size."
 		#read -r webm_size
 		if (( $1 == 1 && $(bc <<< "$webm_size < $first_try*1.01") && $(bc <<< "$webm_size > $first_try*0.99") )); then break; fi
-		if (( $(bc <<< "$webm_size < $file_size*1024*1024") )); then break; fi
+		if (( $(bc <<< "$webm_size < $file_size*1024*1024") )); then small_break=true; break; fi
 	done
 }
 
@@ -271,6 +278,7 @@ adjuster () {
 	first_try=$webm_size
 	mode_counter=1
 	use_best_try=false
+	small_break=false
 	while (( $(bc <<< "$webm_size > $file_size*1024*1024") || $(bc <<< "$webm_size < $file_size*1024*1024*$undershoot_limit") )); do
 		if [[ "$use_best_try" = true ]]; then
 			echo "Failed to raise output file size above undershoot limit." 
@@ -287,7 +295,7 @@ adjuster () {
 			best_try_bitrate=$last_video_bitrate
 			enhance $mode_counter
 		fi
-		(( mode_counter += 1 ))
+		if [[ "$small_break" = false ]]; then (( mode_counter += 1 )); fi
 	done
 }
 
@@ -337,7 +345,7 @@ done
 [[ -z $new_codecs ]] && new_codecs=false
 [[ -z $file_size ]] && file_size=3
 [[ -z $undershoot_limit ]] && undershoot_limit=0.75
-[[ -z $adjust_iterations ]] && adjust_iterations=2
+[[ -z $adjust_iterations ]] && adjust_iterations=3
 if [[ -n $showcase_mode ]]; then
 	case $showcase_mode in
 		auto | manual | video) showcase=true && hq_mode=false;;
@@ -383,18 +391,4 @@ for input in *; do (
 	calc
 	initialEncode
 	if [[ "$showcase" = true ]]; then showcaseAdjuster; else adjuster; fi
-	
-	# Print various variables for debugging purposes
-	#~ echo "Duration: $duration"
-	#~ echo "Height: $video_height"
-	#~ echo "Width: $video_width"
-	#~ echo "Audio bitrate: $audio_bitrate"
-	#~ echo "Video bitrate: $video_bitrate"
-	#~ echo "Buffer size: $bufsize"
-	#~ echo "Bits per pixel: $bpp"
-	#~ echo "2-pass mode is active: $two_pass"
-	#~ echo "Aspect ratio: $aspect_ratio"
-	#~ echo "Framerate: $frame_rate"
-	#~ echo "Audio factor: $audio_factor"
-	#~ echo "Channels: $audio_channels"
 ); done

@@ -21,7 +21,7 @@ Usage: convert.sh [-h] [-t] [-a] [-q] [-c { auto | manual | video }] [-n] [-s fi
 		8chan limits:
 			all boards: 8MB - audio allowed
 	-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.75 (75%).
-	-i iterations: Define how many times the script tries to adjust the bitrate for each bitrate mode. Default value is 2.
+	-i iterations: Define how many encoding attempts there will be for each bitrate mode. Default value is 3.
 	-f filters: Add custom ffmpeg filters. Refer to ffmpeg's documentation for further information
 
 ```
