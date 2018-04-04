@@ -65,4 +65,4 @@ Options in more detail:
 	The script cycles through 3 bitrate modes and during each bitrate mode it adjusts the bitrate several times. With the -i flag you can specify how many encoding attempts there will be for each bitrate mode. Additionally the script will make i*2 attempts (so by default 6) once it got a webm within the file size limit, but not above the undershoot limit.
 
 	Filters:
-	Here you can enter your usual ffmpeg filters. This string will be used directly in the ffmpeg command, so it'll throw an error if you make any mistakes in it. Note that using the scale filter will disable automatic downscaling and also any functions that are directly tied to some bpp threshold (most importantly 2-pass encoding).
+	Here you can enter your usual ffmpeg filters. This string will be used directly in the ffmpeg command, so it'll throw an error if you make any mistakes in it. Note that using the scale filter will disable automatic downscaling and also any functions that are directly tied to some bpp threshold (most importantly 2-pass encoding). So if you want to force the input resolution (quality be damned), use the scale filter manually.

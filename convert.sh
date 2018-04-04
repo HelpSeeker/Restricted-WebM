@@ -112,6 +112,7 @@ audio () {
 calc () {
 	video_bitrate=$(bc <<< "($file_size*8*1000/$duration-$audio_bitrate+0.5)/1")
 	bpp=$(bc <<< "scale=3; $video_bitrate*1000/($video_height*$video_width*$frame_rate)")
+	new_bpp=$bpp
 }
 
 # Reduce output height (width is later adjusted via aspect ratio) to reach certain bits per pixel value; min. output height is 360p/240p
@@ -217,6 +218,7 @@ convert () {
 	#~ echo "First try: $first_try"
 	#~ echo "Video settings: $video_settings"
 	#~ echo "Mode counter: $mode_counter"
+	#~ echo "Filters: $filter"
 }
 
 # Function to summarize the first encoding cycle.

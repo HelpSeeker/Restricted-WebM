@@ -64,14 +64,16 @@ General:
 - [x] Apply filters to all videos  
 - [x] Use each video's file name for the title metadata  
 - [x] List input files that cannot be forced into the specified size / undershoot limit
+- [ ] Accept gif input and loop it to an audio file
 - [ ] Set filters for individual videos  
 
 Quality adjustments:  
 - [x] Calculate bitrate based on video length  
 - [x] Automatic downscaling if quality would be too low otherwise (disabled when using scale manually)
 - [x] Use 2-pass encoding automatically  
-- [x] Loops through bitrate settings to fit the file size into the specified limit  
-- [x] Adjust bitrate if the webm over-/undershoots the specified limit
+- [x] Loop through bitrate settings to fit the file size into the specified limit  
+- [x] Adjust bitrate if the webm over-/undershoots the specified limit  
+- [x] Define how many encoding attempts are made for each bitrate mode  
 - [x] Reduce frame rate if quality is still to low after downscaling
 - [x] HQ (high quality) mode (higher bpp threshold during downscaling)
 
@@ -79,3 +81,4 @@ Audio:
 - [x] Encode with audio (default: off)  
 - [x] Adjust audio bitrate automatically (range: 48-128 kbps)
 - [x] Audio showcase mode (static image as video stream with high quality audio encoding)
+- [ ] Copy the original audio stream if the codec is compatible and has the same or a smaller bitrate
