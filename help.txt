@@ -1,15 +1,27 @@
 How it works:  
 
-	1. Calculates video bitrate based on the file size limit, (trimmed) input video length and audio bitrate (also based on size limit/length).  
-	2. Downscales the video to ensure a minimum bits per pixel value (>= 0.04 for normal, >=0.075 for HQ mode) is reached. Stops at 360p (240p with HQ mode), even if bpp value is still too low. Automatic downscaling is disabled if the scale filter is used manually.  
-	3. Reduces the frame rate if the bpp value is still below its threshold at the minimum resolution. Only affects input files with a frame rate above 24fps when automatic downscaling is active.  
-	4. Encodes a webm with variable bitrate mode and a minimum crf value. Uses 2-pass encoding if bits per pixel value is high enough (>= 0.075).  
-	5. Adjusts encoding settings if the produced webm is larger than the specified limit or smaller than a certain percentage of the limit (default 75%).  
-	6.1. (if too large) Loops through different video encoding settings (variable bitrate without minimum crf -> constant bitrate -> constant bitrate ) starting with the originally calculated bitrate and adjusting it i times (can be specified by user; default value is 2). Note: Since the minimum crf value produces a certain minimum file size, the script may skip ahead to the next bitrate mode to avoid useless encoding attempts.  
-	6.2. (if too small) Only adjusts bitrate to increase file size (doesn't loop through bitrate modes anymore). May lead to less downscaling and the original frame rate being restored. Saves the settings, for the best attempt of reaching the undershoot limit while staying within the file size limit and utilizes them, if unable to reach said file size range after 2*i iterations.
-	7. (Optional, depending on the produced webms) Creates a list of files (too_large.txt and too_small_for_undershoot.txt) that cannot be fit into the file size / undershoot limit, even after going through all available steps.  
+	Normal mode:
 
+		1. Chooses audio bitrate based on video length and file size limit.
+		2. Calculates video bitrate based on video length and file size limit.  
+		3. Downscales the output to ensure a minimum bits per pixel value (>= 0.04 for normal, >=0.075 for HQ mode) is reached. Stops at 360p (240p with HQ mode), even if bpp value is still too low. Automatic downscaling is disabled if the scale filter is used manually.  
+		4. Reduces the frame rate if the bpp value is still below its threshold at the minimum resolution. Only affects input files with a frame rate above 24fps when automatic downscaling is active.  
+		5. Encodes a webm with variable bitrate mode and a minimum crf value. Uses 2-pass encoding if bits per pixel value is high enough (>= 0.075).  
+		6. Adjusts encoding settings if the produced webm is larger than the specified limit or smaller than a certain percentage of the limit (default 75%).  
+		7.1. (if too large) Loops through different video encoding settings (variable bitrate without minimum crf -> constant bitrate -> constant bitrate ) starting with the originally calculated bitrate and adjusting it i times (can be specified by user; default value is 2). Note: Since the minimum crf value produces a certain minimum file size, the script may skip ahead to the next bitrate mode to avoid useless encoding attempts.  
+		7.2. (if too small) Adjusts bitrate to increase file size (doesn't loop through bitrate modes anymore). May lead to less downscaling and the original frame rate being restored. Saves the settings, for the best attempt of reaching the undershoot limit while staying within the file size limit and utilizes them, if unable to reach said file size range after 2*i iterations.
+		8. (Optional, depending on the produced webms) Creates a list of files (too_large.txt and too_small_for_undershoot.txt) that cannot be fit into the file size / undershoot limit, even after going through all available steps.  
 
+	Audio showcase mode:
+		0. (if auto or manual option) Get image path automatically or from user
+		1. Chooses audio bitrate based on video length and file size limit.
+		2. Calculates theoretical video bitrate based on video length and file size limit.  
+		3. Downscales output video based on the theoretical video bitrate.
+		4. Set frame rate to 1 fps and keyframe interval to 20 frames.
+		5. Set the real video bitrate (the one being used for the actual conversion) to 10Mbps (will never be fully utilized; gives ffmpeg the freedom to use whatever bitrate is necessary to reach crf 10).
+		6. Increase keyframe interval if webm size is larger than the file size limit. Maximum number of attempts are i*2. Note that any undershoot limit will be ignored in this mode.
+		7. (Optional, depending on the produced webms) Creates a list of files (too_large.txt) that cannot be fit into the file size limit.
+		
 Command line usage:
 
 	Usage: convert.sh [-h] [-t] [-a] [-q] [-c { auto | manual | video }] [-n] [-s file_size_limit] [-u undershoot_limit] [-i iterations] [-f filters]

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+debug_mode=false
+
 ###################
 # Functions
 ###################
@@ -155,16 +157,16 @@ bitrate () {
 }
 
 # Define which video codec and bitrate mode to use
-# Needs number of bitrate mode and the to be used video bitrate as input, unless audio showcase mode is active
+# Needs number of bitrate mode as input, unless audio showcase mode is active
 video () {
 	if [[ "$new_codecs" = true ]]; then video_codec="libvpx-vp9"; else video_codec="libvpx"; fi
 	if [[ "$showcase" = true ]]; then
 		video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v 10M"
 	else
 		case $1 in
-			1) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${2}K";;
-			2) video_settings="-c:v $video_codec -crf 10 -b:v ${2}K";;	
-			3) video_settings="-c:v $video_codec -minrate:v ${2}K -maxrate:v ${2}K -b:v ${2}K";;
+			1) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${new_video_bitrate}K";;
+			2) video_settings="-c:v $video_codec -crf 10 -b:v ${new_video_bitrate}K";;	
+			3) video_settings="-c:v $video_codec -minrate:v ${new_video_bitrate}K -maxrate:v ${new_video_bitrate}K -b:v ${new_video_bitrate}K";;
 			# 4) video_settings="-c:v $video_codec -bufsize $bufsize -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K -skip_threshold 100";;
 			*) echo "Unknown bitrate mode!";;
 		esac
@@ -193,32 +195,35 @@ convert () {
 		filter="${filter}$scaling_factor"
 	fi
 	
-	if [[ "$showcase_mode" = "auto" || "$showcase_mode" = "manual" ]]; then
-		echo -e "\\n\\n\\n"
-		ffmpeg -y -hide_banner -ss $start_time -loop 1 -i "$picture_path" -i "$input" -t $duration $frame_settings -pix_fmt yuv420p $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
-		echo -e "\\n\\n\\n"
-		ffmpeg -y -hide_banner -ss $start_time -loop 1 -i "$picture_path" -i "$input" -t $duration $frame_settings -pix_fmt yuv420p $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
-		rm ffmpeg2pass-0.log
+	if [[ "$debug_mode" = true ]]; then
+		# Print various variables for debugging purposes
+		#echo "Audio factor: $audio_factor"
+		echo "Iteration: $i"
+		#echo "First try: $first_try"
+		echo "Best try: $best_try"
+		echo "Best try bitrate: $best_try_bitrate"
+		echo "Video settings: $video_settings"
+		#echo "Mode counter: $mode_counter"
+		echo "Attempt: $attempt"
+		#echo "Filters: $filter"
 	else
-		if [[ $(bc <<< "$new_bpp >= 0.075") -eq 1 || "$showcase_mode" = "video" ]]; then
+		if [[ "$showcase_mode" = "auto" || "$showcase_mode" = "manual" ]]; then
 			echo -e "\\n\\n\\n"
-			ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
+			[[ -e ffmpeg2pass-0.log ]] || ffmpeg -y -hide_banner -ss $start_time -loop 1 -i "$picture_path" -i "$input" -t $duration $frame_settings -pix_fmt yuv420p $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
 			echo -e "\\n\\n\\n"
-			ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
-			rm ffmpeg2pass-0.log
+			ffmpeg -y -hide_banner -ss $start_time -loop 1 -i "$picture_path" -i "$input" -map 0:0 -map 1:a -t $duration $frame_settings -pix_fmt yuv420p $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
 		else
-			echo -e "\\n\\n\\n"
-			ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings "../done/${input%.*}.webm"
+			if [[ $(bc <<< "$new_bpp >= 0.075") -eq 1 || $(bc <<< "$new_video_bitrate >= 2000") -eq 1 || "$showcase_mode" = "video" ]]; then
+				echo -e "\\n\\n\\n"
+				[[ -e ffmpeg2pass-0.log ]] || ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
+				echo -e "\\n\\n\\n"
+				ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
+			else
+				echo -e "\\n\\n\\n"
+				ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings "../done/${input%.*}.webm"
+			fi
 		fi
 	fi
-	
-	# Print various variables for debugging purposes
-	#~ echo "Audio factor: $audio_factor"
-	#~ echo "Iteration: $i"
-	#~ echo "First try: $first_try"
-	#~ echo "Video settings: $video_settings"
-	#~ echo "Mode counter: $mode_counter"
-	#~ echo "Filters: $filter"
 }
 
 # Function to summarize the first encoding cycle.
@@ -226,7 +231,7 @@ initialEncode () {
 	contains "$filter_settings" "scale" || downscale "$video_bitrate"
 	if [[ "$showcase" = true ]]; then showcaseSettings 1; fi
 	bitrate 1
-	video 1 "$video_bitrate"
+	video 1
 	convert
 }
 
@@ -236,19 +241,21 @@ enhance () {
 	while (( $(bc <<< "$webm_size > $file_size*1024*1024") || $(bc <<< "$webm_size < $file_size*1024*1024*$undershoot_limit") )); do
 		bitrate "$i"
 		if (( new_video_bitrate < last_video_bitrate || $(bc <<< "$new_video_bitrate > $last_video_bitrate*1.4") )); then contains "$filter_settings" "scale" || downscale "$new_video_bitrate"; fi
-		video "$1" "$new_video_bitrate"
+		video "$1"
 		convert
-		webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm")
-		#echo "Debug mode: Enter webm size."
-		#read -r webm_size
+		if [[ "$debug_mode" = true ]]; then echo "Debug mode: Enter webm size." && read -r webm_size; else webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm"); fi
 		if (( webm_size > best_try && $(bc <<< "$webm_size < $file_size*1024*1024") )); then
 			best_try=$webm_size
 			best_try_bitrate=$new_video_bitrate
+			attempt=$i
 		fi
-		if (( i > adjust_iterations*2 )); then
+		if (( i > adjust_iterations*2 && attempt <= adjust_iterations*2 )); then
 			use_best_try=true
-			video "$1" "$best_try_bitrate"
+			new_video_bitrate=$best_try_bitrate
+			video "$1"
 			convert
+			break
+		elif (( attempt > adjust_iterations*2 )); then
 			break
 		fi
 		(( i += 1 ))
@@ -262,11 +269,9 @@ limit () {
 	do
 		bitrate "$i"
 		if (( new_video_bitrate < last_video_bitrate )); then contains "$filter_settings" "scale" || downscale "$new_video_bitrate"; fi
-		video "$1" "$new_video_bitrate"
+		video "$1"
 		convert
-		webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm")
-		#echo "Debug mode: Enter webm size."
-		#read -r webm_size
+		if [[ "$debug_mode" = true ]]; then echo "Debug mode: Enter webm size." && read -r webm_size; else webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm"); fi
 		if (( $1 == 1 && $(bc <<< "$webm_size < $first_try*1.01") && $(bc <<< "$webm_size > $first_try*0.99") )); then break; fi
 		if (( $(bc <<< "$webm_size < $file_size*1024*1024") )); then small_break=true; break; fi
 	done
@@ -274,9 +279,7 @@ limit () {
 
 # Decide which steps to take based on the webm of the initial encode
 adjuster () {
-	#echo "Debug mode: Enter webm size."
-	#read -r webm_size
-	webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm")
+	if [[ "$debug_mode" = true ]]; then echo "Debug mode: Enter webm size." && read -r webm_size; else webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm"); fi
 	first_try=$webm_size
 	mode_counter=1
 	use_best_try=false
@@ -295,6 +298,7 @@ adjuster () {
 		elif (( $(bc <<< "$webm_size < $file_size*1024*1024*$undershoot_limit") )); then
 			best_try=$webm_size
 			best_try_bitrate=$last_video_bitrate
+			attempt=1
 			enhance $mode_counter
 		fi
 		if [[ "$small_break" = false ]]; then (( mode_counter += 1 )); fi
@@ -304,13 +308,13 @@ adjuster () {
 # Reduce file size for audio showcase webms
 # Limited possibilities since ffprobe can't show the size of a single stream
 showcaseAdjuster () {
-	webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm")
+	if [[ "$debug_mode" = true ]]; then echo "Debug mode: Enter webm size." && read -r webm_size; else webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm"); fi
 	counter=2
 	while (( $(bc <<< "$webm_size > $file_size*1024*1024") )); do
 		showcaseSettings "$counter"
 		convert
-		webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm")
-		if (( counter > 6 )); then 
+		if [[ "$debug_mode" = true ]]; then echo "Debug mode: Enter webm size." && read -r webm_size; else webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm"); fi
+		if (( counter > adjust_iterations*2 )); then 
 			echo "File still doesn't fit the specified limit. Please use ffmpeg manually." 
 			echo "$input" >> ../too_large.txt
 			break
@@ -374,10 +378,16 @@ else
 	height_threshold=360
 fi
 
+# Make sure showcase_pictures/ exists and there are any files in it, if the auto audio showcase mode is active
+# Used another for-loop, since wildcard matching doesn't work with test alone
+if [[ "$showcase_mode" = "auto" ]]; then
+	cd showcase_pictures 2> /dev/null || { echo "No showcase_pictures folder present" && exit; }
+	for file in *; do [[ -e "$file" ]] || { echo "No files present in showcase_pictures" && exit; }; break; done
+	cd ..
+fi
 # Change into sub-directory to avoid file conflicts when converting webms
 cd to_convert 2> /dev/null || { echo "No to_convert folder present" && exit; }
 # Make sure there are any files in to_convert/
-# Used another for-loop, since wildcard matching doesn't work with test alone
 for file in *; do [[ -e "$file" ]] || { echo "No files present in to_convert" && exit; }; break; done
 # Create sub-directory for the finished webms
 mkdir ../done 2> /dev/null
@@ -393,4 +403,5 @@ for input in *; do (
 	calc
 	initialEncode
 	if [[ "$showcase" = true ]]; then showcaseAdjuster; else adjuster; fi
+	rm ffmpeg2pass-0.log 2> /dev/null
 ); done

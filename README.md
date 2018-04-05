@@ -38,17 +38,17 @@ Restricted-Webm/
 │
 ├── showcase_pictures/ (only when using the audio showcase mode with the auto option)
 │     │ 
-│     │ (the following files are pictures with the same name as the audio files in to_convert/)
-│     │ audio01
-│     │ audio02
-│     │ audio03
+│     │ (the following files are pictures with the same name as the files in to_convert/; extension doesn't matter)
+│     │ file01.jpg
+│     │ file02.png
+│     │ file03.tiff
 │     │ ...
 │
 ├── to_convert/
       │ 
-      │ video01 or audio01
-      │ video02 or audio02
-      │ video03 or audio03
+      │ file01
+      │ file02
+      │ file03
       │ ...
 
 ```
@@ -65,7 +65,6 @@ General:
 - [x] Use each video's file name for the title metadata  
 - [x] List input files that cannot be forced into the specified size / undershoot limit
 - [ ] Accept gif input and loop it to an audio file
-- [ ] Set filters for individual videos  
 
 Quality adjustments:  
 - [x] Calculate bitrate based on video length  
