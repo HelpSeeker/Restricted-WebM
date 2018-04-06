@@ -4,7 +4,7 @@ How it works:
 
 		1. Chooses audio bitrate based on video length and file size limit.
 		2. Calculates video bitrate based on video length and file size limit.  
-		3. Downscales the output to ensure a minimum bits per pixel value (>= 0.04 for normal, >=0.075 for HQ mode) is reached. Stops at 360p (240p with HQ mode), even if bpp value is still too low. Automatic downscaling is disabled if the scale filter is used manually.  
+		3. Downscales the output to ensure a minimum bits per pixel value (>= 0.04 for normal, >=0.075 for HQ mode) is reached. Stops at 180p (360p with HQ mode), even if bpp value is still too low. Automatic downscaling is disabled if the scale filter is used manually.  
 		4. Reduces the frame rate if the bpp value is still below its threshold at the minimum resolution. Only affects input files with a frame rate above 24fps when automatic downscaling is active.  
 		5. Encodes a webm with variable bitrate mode and a minimum crf value. Uses 2-pass encoding if bits per pixel value is high enough (>= 0.075) and a minimum video bitrate of 500kbps is used.  
 		6. Adjusts encoding settings if the produced webm is larger than the specified limit or smaller than a certain percentage of the limit (default 75%).  
@@ -18,7 +18,7 @@ How it works:
 		2. Calculates theoretical video bitrate based on video length and file size limit.  
 		3. Downscales output video based on the theoretical video bitrate.
 		4. Sets frame rate to 1 fps, keyframe interval to 20 frames and the real video bitrate (the one being used for the actual conversion) to 10Mbps (will never be fully utilized; gives ffmpeg the freedom to use whatever bitrate is necessary to reach crf 10).
-		5. Encodes a webm with variable bitratre mode and 2-pass encoding enabled (that's always the case).
+		5. Encodes a webm with variable bitrate mode and 2-pass encoding enabled (that's always the case).
 		6. Increases keyframe interval if webm size is larger than the file size limit. Maximum number of attempts are i*2. Note that any undershoot limit will be ignored in this mode.
 		7. (Optional, depending on the produced webms) Creates a list of files (too_large.txt) that cannot be fit into the file size limit.
 		
@@ -78,3 +78,8 @@ Options in more detail:
 
 	Filters:
 	Here you can enter your usual ffmpeg filters. This string will be used directly in the ffmpeg command, so it'll throw an error if you make any mistakes in it. Note that using the scale filter will disable automatic downscaling and also any functions that are directly tied to some bpp threshold (most importantly 2-pass encoding). So if you want to force the input resolution (quality be damned), use the scale filter manually.
+	
+	
+Standard vs. HQ mode:
+
+In theory the choice is simple. Use standard mode if your primary goal is to fit the output webm into the file size limit, use HQ mode if you also want a better quality. However this choice becomes somewhat less obvious, once we start using low bitrates. VP8's 2-pass encoding delivers better results at high(er) bitrates, but at the lower end of the spectrum it becomes a wildcard. In my experience it tends to prioritize the wrong details (e.g. stuff in the background becomes more detailed, while facial features suffer a loss in quality) and has problems when there are both calm and hectic scenes in the same video, as it assigns too much bitrate to the hectic scenes (you might not even notice, when we're talking about fast movements) and leaves the calmer scenes with a lot of compression artifacts. Therefore, if you're not satisfied with the produced webm in HQ mode, try again with the standard mode, as it might lead to a better result.

@@ -209,18 +209,18 @@ convert () {
 	else
 		if [[ "$showcase_mode" = "auto" || "$showcase_mode" = "manual" ]]; then
 			echo -e "\\n\\n\\n"
-			[[ -e ffmpeg2pass-0.log ]] || ffmpeg -y -hide_banner -ss $start_time -loop 1 -i "$picture_path" -i "$input" -t $duration $frame_settings -pix_fmt yuv420p $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
+			[[ -e ffmpeg2pass-0.log ]] || ffmpeg -y -hide_banner -loop 1 -i "$picture_path" -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
 			echo -e "\\n\\n\\n"
-			ffmpeg -y -hide_banner -ss $start_time -loop 1 -i "$picture_path" -i "$input" -map 0:0 -map 1:a -t $duration $frame_settings -pix_fmt yuv420p $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
+			ffmpeg -y -hide_banner -loop 1 -i "$picture_path" -ss $start_time -i "$input" -map 0:0 -map 1:a -t $duration $frame_settings -pix_fmt yuv420p $video_settings -tune ssim -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 25 -arnr-maxframes 15 -arnr-strength 3 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
 		else
-			if [[ ($(bc <<< "$new_bpp >= 0.075") -eq 1 && "$new_video_bitrate" -ge 500) || "$new_video_bitrate" -ge 2000 || "$showcase_mode" = "video" ]]; then
+			if [[ ($(bc <<< "$new_bpp >= 0.075") -eq 1 && "$new_video_bitrate" -ge 400) || "$new_video_bitrate" -ge 2000 || "$showcase_mode" = "video" ]]; then
 				echo -e "\\n\\n\\n"
 				[[ -e ffmpeg2pass-0.log ]] || ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
 				echo -e "\\n\\n\\n"
-				ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
+				ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -tune ssim -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 25 -arnr-maxframes 15 -arnr-strength 3 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
 			else
 				echo -e "\\n\\n\\n"
-				ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -metadata title="${input%.*}" -lag-in-frames 16 -deadline good -cpu-used 0 $filter $audio_settings "../done/${input%.*}.webm"
+				ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -tune ssim -slices 8 -threads 1 -metadata title="${input%.*}" -deadline good -cpu-used 0 $filter $audio_settings "../done/${input%.*}.webm"
 			fi
 		fi
 	fi
@@ -367,15 +367,12 @@ fi
 audio_bitrate=0
 audio_settings="-an"
 start_time=0
-if [[ "$hq_mode" = true ]]; then
-	bcc_threshold=0.075
-	height_threshold=240
-elif [[ "$showcase" = true ]]; then
+if [[ "$hq_mode" = true || "$showcase" = true ]]; then
 	bcc_threshold=0.075
 	height_threshold=360
 else
 	bcc_threshold=0.04
-	height_threshold=360
+	height_threshold=180
 fi
 
 # Make sure showcase_pictures/ exists and there are any files in it, if the auto audio showcase mode is active
