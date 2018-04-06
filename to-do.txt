@@ -1,15 +1,7 @@
 Stuff that still needs to be implemented / fixed (sorted by priority):
 
-	-) Find a way to read user defined scale in order to use height/width in calculations
-
-	-) Find a way to drop frames when downscaler reaches a certain height and have downscaler continue if the dropped frames still aren't enough
-
 	-) Improve audio function
 		-> Increase max. possible audio bitrate to 192kbps
 		-> Tweak the current makeshift function to choose the audio bitrate
 		
 	-) Add gif support for audio showcase mode
-	
-	-) Read input codecs and copy audio stream if compatible and the bitrate isn't too high
-		
-	-) Add warning / force user input if audio bitrate leads to a negative video bitrate (low priority as it only happens with insane video length / file size combos)
