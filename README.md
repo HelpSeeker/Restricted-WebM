@@ -80,4 +80,3 @@ Audio:
 - [x] Encode with audio (default: off)  
 - [x] Adjust audio bitrate automatically (range: 48-128 kbps)
 - [x] Audio showcase mode (static image as video stream with high quality audio encoding)
-- [ ] Copy the original audio stream if the codec is compatible and has the same or a smaller bitrate
