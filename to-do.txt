@@ -3,5 +3,3 @@ Stuff that still needs to be implemented / fixed (sorted by priority):
 	-) Improve audio function
 		-> Increase max. possible audio bitrate to 192kbps
 		-> Tweak the current makeshift function to choose the audio bitrate
-		
-	-) Add gif support for audio showcase mode

@@ -1,6 +1,26 @@
-How it works:  
+Q&A:
+~~~~
 
-	Normal mode:
+Q: When should I use the HQ mode?
+A: In theory the choice is simple. Use standard mode if your primary goal is to fit the output webm into the file size limit, use HQ mode if you want better quality at the cost of a smaller resolution. However this choice becomes somewhat less obvious, once we start using low bitrates. VP8's 2-pass encoding delivers better results at high(er) bitrates, but at the lower end of the spectrum it becomes a wildcard. In my experience it tends to prioritize the wrong details (e.g. stuff in the background becomes more detailed, while facial features suffer a loss in quality) and has problems when there are both calm and hectic scenes in the same video, as it assigns too much bitrate to the hectic scenes (you might not even notice, when we're talking about fast movements) and leaves the calmer scenes with a lot of compression artifacts. Therefore, if you're not satisfied with the produced webm in HQ mode, try again with the standard mode, as it might lead to a better result.
+
+Q: What should I do if I want a bigger minimum resolution?
+A: Using the scale filter manually (via the -f flag) will deactivate automatic downscaling, so if you e.g. want a minimum height of 360p, but the output is smaller, then add "-f scale=-1:360" to your command.
+
+Q: How can I disable the undershoot limit?
+A: Use "-u 0" in your command.
+
+Q: FFmpeg shows an error when using VP9/Opus instead of VP8/Vorbis ("Failed to set VP8E_SET_TUNING codec control: Invalid parameter. Additional information: Option --tune=ssim is not currently supported in VP9."). Should I be concerned?
+A: I don't think so. Using SSIM instead of PSNR produces better results with VP8. Apparently VP9 doesn't support the tune option (even though it's listed as an option in libvpx-vp9's documentation), but there aren't any consequences. FFmpeg simply ignores the option.
+
+Q: Why does the script pause at the beginning, when I scale manually?
+A: If you use the scale filter manually, then the script makes a test encode of the input video with your custom scale settings. Although it's just a second long and utilizes the fastest encoding setting, there might be a few seconds long delay depending on how big the resolution and/or how powerful your PC is.
+
+
+How it works:  
+~~~~~~~~~~~~~
+
+	Standard mode:
 
 		1. Chooses audio bitrate based on video length and file size limit.
 		2. Calculates video bitrate based on video length and file size limit.  
@@ -13,6 +33,7 @@ How it works:
 		8. (Optional, depending on the produced webms) Creates a list of files (too_large.txt and too_small_for_undershoot.txt) that cannot be fit into the file size / undershoot limit, even after going through all available steps.  
 
 	Audio showcase mode:
+	
 		0. (if auto or manual option) Get image path automatically or from user
 		1. Chooses audio bitrate based on video length and file size limit.
 		2. Calculates theoretical video bitrate based on video length and file size limit.  
@@ -21,8 +42,12 @@ How it works:
 		5. Encodes a webm with variable bitrate mode and 2-pass encoding enabled (that's always the case).
 		6. Increases keyframe interval if webm size is larger than the file size limit. Maximum number of attempts are i*2. Note that any undershoot limit will be ignored in this mode.
 		7. (Optional, depending on the produced webms) Creates a list of files (too_large.txt) that cannot be fit into the file size limit.
-		
+	
+	Note that animated gifs will follow the steps of the standard mode, even if you use the audio showcase mode.
+
+	
 Command line usage:
+~~~~~~~~~~~~~~~~~~~
 
 	Usage: convert.sh [-h] [-t] [-a] [-q] [-c { auto | manual | video }] [-n] [-s file_size_limit] [-u undershoot_limit] [-i iterations] [-f filters]
 		-h: Show Help. For more detailed infos: Read help.txt.
@@ -42,10 +67,11 @@ Command line usage:
 				all boards: 8MB - audio allowed
 		-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.75 (75%).
 		-i iterations: Define how many times the script tries to adjust the bitrate for each bitrate mode. Default value is 2.
-		-f filters: Add custom ffmpeg filters. Refer to ffmpeg's documentation for further information
+		-f filters: Add custom ffmpeg filters. Refer to ffmpeg's documentation for further information.
 
 
 Options in more detail:
+~~~~~~~~~~~~~~~~~~~~~~~
 	
 	Trim mode:
 	Lets you define which part of the input video to use. Input is required for each individual file, so if you want to convert a folder full of videos in one go, trim them beforehand. The start and end time must be specified in seconds (also works with fractions of a second). Start defaults to 0 seconds and end to the length of the input video, if the input line is left empty.
@@ -62,7 +88,6 @@ Options in more detail:
 	-) auto: The script assumes that there is a picture, with matching filename, for every input audio file in to_convert, located in showcase_pictures. The extension doesn't matter, so you can use any image that your version of ffmpeg is able to handle. This is the best option if you want to convert many files in the background.
 	-) manual: The script asks you for the location of the input picture for each individual file. Doesn't require attention when it comes to additional folder structure, but prevents continuous encoding.
 	-) video: Instead of using an audio file and a picture, the script applies the usual showcase settings to input videos in to_convert. Use this if you already have a video with a static image as video stream (e.g. from YouTube). Any other video content will become a slide show.
-	The weakness of this mode is the lack of file size adjustment. The script increases the key frame interval to reduce the video stream size further, but that's it. Will be improved when I find a way to get the size of the audio stream (not possible with ffprobe).
 
 	Newer Codecs:
 	VP9/Opus are the successors of VP8/Vorbis and produce much better results, especially at low bitrates. If a website allows webms with those codecs and you don't mind longer encoding times, then go for them.
@@ -77,9 +102,4 @@ Options in more detail:
 	The script cycles through 3 bitrate modes and during each bitrate mode it adjusts the bitrate several times. With the -i flag you can specify how many encoding attempts there will be for each bitrate mode. Additionally the script will make i*2 attempts (so by default 6) once it got a webm within the file size limit, but not above the undershoot limit.
 
 	Filters:
-	Here you can enter your usual ffmpeg filters. This string will be used directly in the ffmpeg command, so it'll throw an error if you make any mistakes in it. Note that using the scale filter will disable automatic downscaling and also any functions that are directly tied to some bpp threshold (most importantly 2-pass encoding). So if you want to force the input resolution (quality be damned), use the scale filter manually.
-	
-	
-Standard vs. HQ mode:
-
-In theory the choice is simple. Use standard mode if your primary goal is to fit the output webm into the file size limit, use HQ mode if you want better quality at the cost of a smaller resolution. However this choice becomes somewhat less obvious, once we start using low bitrates. VP8's 2-pass encoding delivers better results at high(er) bitrates, but at the lower end of the spectrum it becomes a wildcard. In my experience it tends to prioritize the wrong details (e.g. stuff in the background becomes more detailed, while facial features suffer a loss in quality) and has problems when there are both calm and hectic scenes in the same video, as it assigns too much bitrate to the hectic scenes (you might not even notice, when we're talking about fast movements) and leaves the calmer scenes with a lot of compression artifacts. Therefore, if you're not satisfied with the produced webm in HQ mode, try again with the standard mode, as it might lead to a better result.
+	Here you can enter your usual ffmpeg filters. This string will be used directly in the ffmpeg command, so it'll throw an error if you make any mistakes in it. Note that using the scale filter will disable automatic downscaling, so if you want to force the input resolution (quality be damned), use the scale filter manually.

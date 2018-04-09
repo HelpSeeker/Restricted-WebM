@@ -41,7 +41,7 @@ Restricted-Webm/
 │     │ (the following files are pictures with the same name as the files in to_convert/; extension doesn't matter)
 │     │ file01.jpg
 │     │ file02.png
-│     │ file03.tiff
+│     │ file03.gif
 │     │ ...
 │
 ├── to_convert/
@@ -53,7 +53,7 @@ Restricted-Webm/
 
 ```
 
-**Functions (existing and planned ones):**
+**Functions:**
 
 General:  
 - [x] Convert all videos from the to_convert folder into webms  
@@ -64,7 +64,7 @@ General:
 - [x] Apply filters to all videos  
 - [x] Use each video's file name for the title metadata  
 - [x] List input files that cannot be forced into the specified size / undershoot limit
-- [ ] Accept gif input and loop it to an audio file
+- [x] Accept gif input for both audio showcase and standard mode
 
 Quality adjustments:  
 - [x] Calculate bitrate based on video length  
@@ -73,7 +73,7 @@ Quality adjustments:
 - [x] Loop through bitrate settings to fit the file size into the specified limit  
 - [x] Adjust bitrate if the webm over-/undershoots the specified limit  
 - [x] Define how many encoding attempts are made for each bitrate mode  
-- [x] Reduce frame rate if quality is still to low after downscaling
+- [x] Reduce frame rate if quality is still too low after downscaling
 - [x] HQ (high quality) mode (higher bpp threshold during downscaling)
 
 Audio:  

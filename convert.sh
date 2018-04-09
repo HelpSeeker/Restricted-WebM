@@ -166,7 +166,7 @@ framedrop () {
 		frame_settings="-r $new_frame_rate"
 	else 
 		new_frame_rate=$frame_rate
-		frame_settings=""
+		frame_settings="-r $frame_rate"
 	fi
 }
 
@@ -224,52 +224,81 @@ convert () {
 		filter="${filter}$scaling_factor"
 	fi
 	
+	if [[ -n "$showcase_mode" && "$showcase_mode" != "video" ]]; then
+		if [[ "$animated_gif" = true ]]; then 
+			input_config=(-ignore_loop 0 -i "$picture_path" -ss "$start_time" -i "$input" -map 0:0 -map 1:a)
+		else
+			input_config=(-loop 1 -i "$picture_path" -ss "$start_time" -i "$input" -t "$duration")
+		fi
+	else 
+		if [[ "${input##*.}" = "gif" ]]; then 
+			input_config=(-i "$input")
+		else
+			input_config=(-ss "$start_time" -i "$input"  -t "$duration")
+		fi
+	fi
+	
 	if [[ "$debug_mode" = true ]]; then
 		# Print various variables for debugging purposes
-		#echo "Audio factor: $audio_factor"
+		echo "Audio factor: $audio_factor"
 		#echo "Iteration: $i"
 		#echo "First try: $first_try"
 		#echo "Best try: $best_try"
 		#echo "Best try bitrate: $best_try_bitrate"
-		#echo "Video settings: $video_settings"
+		echo "Video settings: $video_settings"
 		#echo "Mode counter: $mode_counter"
 		#echo "Attempt: $attempt"
+		echo "Frame settings: $frame_settings"
 		echo "Bpp: $new_bpp"
-		echo "Filters: $filter"
-		echo "User scale: $user_scale"
+		#echo "Filters: $filter"
+		#echo "User scale: $user_scale"
 	else
-		if [[ "$showcase_mode" = "auto" || "$showcase_mode" = "manual" ]]; then
-			echo -e "\\n\\n\\n"
-			[[ -e ffmpeg2pass-0.log ]] || ffmpeg -y -hide_banner -loop 1 -i "$picture_path" -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
-			echo -e "\\n\\n\\n"
-			ffmpeg -y -hide_banner -loop 1 -i "$picture_path" -ss $start_time -i "$input" -map 0:0 -map 1:a -t $duration $frame_settings -pix_fmt yuv420p $video_settings -tune ssim -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 25 -arnr-maxframes 15 -arnr-strength 3 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
-		else
-			if [[ ($(bc <<< "$new_bpp >= 0.075") -eq 1 && "$new_video_bitrate" -ge 400) || "$new_video_bitrate" -ge 2000 || "$showcase_mode" = "video" ]]; then
+		if [[ "$animated_gif" = true || "${input##*.}" = "gif" ]]; then
+			if [[ ($(bc <<< "$new_bpp >= 0.075") -eq 1 && "$new_video_bitrate" -ge 400) || "$new_video_bitrate" -ge 2000 ]]; then
 				echo -e "\\n\\n\\n"
-				[[ -e ffmpeg2pass-0.log ]] || ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
+				[[ -e ffmpeg2pass-0.log ]] || ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings $video_settings -auto-alt-ref 0 -slices 8 -threads 1 -deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
 				echo -e "\\n\\n\\n"
-				ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -tune ssim -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 25 -arnr-maxframes 15 -arnr-strength 3 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
+				ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings -pix_fmt yuv420p $video_settings -tune ssim -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 0 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
 			else
 				echo -e "\\n\\n\\n"
-				ffmpeg -y -hide_banner -ss $start_time -i "$input" -t $duration $frame_settings $video_settings -tune ssim -slices 8 -threads 1 -metadata title="${input%.*}" -deadline good -cpu-used 0 $filter $audio_settings "../done/${input%.*}.webm"
+				ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings -pix_fmt yuv420p $video_settings -tune ssim -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 0 -deadline good -cpu-used 0 $filter $audio_settings "../done/${input%.*}.webm"
+			fi
+		else
+			if [[ ($(bc <<< "$new_bpp >= 0.075") -eq 1 && "$new_video_bitrate" -ge 400) || "$new_video_bitrate" -ge 2000 || -n $showcase_mode ]]; then
+				echo -e "\\n\\n\\n"
+				[[ -e ffmpeg2pass-0.log ]] || ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
+				echo -e "\\n\\n\\n"
+				ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings $video_settings -tune ssim -slices 8 -threads 1 -metadata title="${input%.*}" -auto-alt-ref 1 -lag-in-frames 25 -arnr-maxframes 15 -arnr-strength 3 -deadline good -cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
+			else
+				echo -e "\\n\\n\\n"
+				ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings $video_settings -tune ssim -slices 8 -threads 1 -metadata title="${input%.*}" -deadline good -cpu-used 0 $filter $audio_settings "../done/${input%.*}.webm"
 			fi
 		fi
 	fi
 }
 
-
 # Define frame_settings for audio showcase mode
 # Input is how many tries (at lowering the file size) were already attempted
+# If still image, encode at 1fps. Otherwise use the gif's frame rate
 showcaseSettings () {
+	if [[ "$showcase_mode" != "video" ]]; then new_frame_rate=$(ffprobe -v error -show_entries stream=avg_frame_rate -of default=noprint_wrappers=1:nokey=1 "$picture_path"); else new_frame_rate="0/0"; fi
 	keyframe_interval=$(( 20 * $1 ))
-	frame_settings="-r $frame_rate -g $keyframe_interval"
+	if [[ "$new_frame_rate" != "0/0" ]]; then 
+		animated_gif=true
+		frame_rate=$new_frame_rate
+		showcase=false
+		frame_settings="-r $frame_rate"
+		audio
+	else 
+		frame_settings="-r $frame_rate -g $keyframe_interval"
+	fi
 }
 
 
 # Function to summarize the first encoding cycle.
 initialEncode () {
-	if [[ "$user_scale" = false ]]; then downscale "$video_bitrate"; else framedrop; fi
 	if [[ "$showcase" = true ]]; then showcaseSettings 1; fi
+	if [[ "$user_scale" = false ]]; then downscale "$video_bitrate"; else framedrop; fi
 	bitrate 1
 	video 1
 	convert
@@ -413,12 +442,12 @@ audio_bitrate=0
 audio_settings="-an"
 start_time=0
 user_scale=false
-if [[ "$showcase" = true ]]; then
+if [[ "$showcase" = true || "$hq_mode" = true ]]; then
 	bcc_threshold=0.075
-	height_threshold=360
-elif [[ "$hq_mode" = true ]]; then
-	bcc_threshold=0.075
-	height_threshold=180	
+	height_threshold=180
+#~ elif [[ "$hq_mode" = true ]]; then
+	#~ bcc_threshold=0.075
+	#~ height_threshold=180	
 else
 	bcc_threshold=0.04
 	height_threshold=180
@@ -454,4 +483,5 @@ for input in *; do (
 	initialEncode
 	if [[ "$showcase" = true ]]; then showcaseAdjuster; else adjuster; fi
 	rm ffmpeg2pass-0.log 2> /dev/null
+	if [[ "$animated_gif" = true ]]; then animated_gif=false && showcase=true; fi
 ); done
