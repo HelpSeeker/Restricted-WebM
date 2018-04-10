@@ -81,6 +81,27 @@ scaleTest () {
 }
 
 
+# Test function to determine codec and size of the input audio and if it's feasible to copy the audio stream instead of re-encoding it
+# Makeshift solution, since ffprobe isn't able to determine the audio stream bitrate, but the overall bitrate of a container with only an audio stream in it
+audioTest () {
+	# Reset main test value for each file
+	same_codec=false
+	
+	# Test if the input audio codec is the same as the one being used
+	input_audio_codec=$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_long_name -of default=noprint_wrappers=1:nokey=1 "$input")
+	if [[ "$new_codecs" = true ]]; then
+		contains "$input_audio_codec" "Opus" && same_codec=true
+	else
+		contains "$input_audio_codec" "Vorbis" && same_codec=true
+	fi
+	
+	# Get information about the audio stream size by copying it in its own container and using ffprobe
+	if [[ "$same_codec" = true ]]; then
+		ffmpeg -y -hide_banner -loglevel panic -i "$input" -map 0:a:0 -c:a copy "../done/${input%.*}.webm"
+		input_audio_bitrate=$(ffprobe -v error -show_entries format=bit_rate -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm")
+	fi
+}
+
 # Ask user where to start and end video and use it to calculate the video duration
 trim () {
 	echo "Current file: $input"
@@ -95,11 +116,12 @@ trim () {
 
 
 # Define audio codec and properties
-# Audio bitrate function/assignment is the result of me trying to match my experience with 4MB webms
 audio () {
-	if [[ "$hq_mode" = true ]]; then
-		audio_bitrate=96
-	elif [[ "$showcase" = true ]]; then
+	# Determine input audio stream properties via audioTest function
+	audioTest
+
+	# Choose audio bitrate based on length / file size limit and whether or not the audio showcase mode is being used
+	if [[ "$showcase" = true ]]; then
 		# -1 to have some wiggle room for the video stream. Otherwise the audio would take up ~90% of the file size limit
 		audio_factor=$(bc <<< "$file_size*8*1000/($duration*32)-1")
 		case $audio_factor in
@@ -109,14 +131,28 @@ audio () {
 			*) audio_bitrate=192;;
 		esac
 	else
+		# Function/assignment for the audio factor tries to recreate my experience with 4MB webms
 		audio_factor=$(bc <<< "$file_size*8*1000/($duration*5.5*32)")
-		case $audio_factor in
-			0) audio_bitrate=48;;
-			1) audio_bitrate=64;;
-			2 | 3 | 4 | 5 | 6) audio_bitrate=96;;
-			*) audio_bitrate=128;;
-		esac
+		if (( audio_factor < 1 )); then
+			audio_bitrate=48
+		elif (( audio_factor >= 1 && audio_factor < 2 )); then
+			audio_bitrate=64
+		elif (( audio_factor >= 2 && audio_factor < 7 )); then
+			audio_bitrate=96
+		elif (( audio_factor >= 7 && audio_factor < 14 )); then
+			audio_bitrate=128
+		elif (( audio_bitrate >= 14 && audio_factor < 30 )); then
+			audio_bitrate=160
+		else
+			audio_bitrate=192
+		fi
 	fi
+	
+	# Ensure that HQ mode gets a higher minimum audio bitrate
+	# 96kbps produces decent results for Vorbis, comparable to mp3 at 128kbps (see: http://listening-test.coresv.net/results.htm)
+	if [[ "$hq_mode" = true && $audio_bitrate -lt 96 ]]; then audio_bitrate=96; fi
+	
+	# Set Opus or Vorbis as the audio codec (based on the -n flag)
 	if [[ "$new_codecs" = true ]]; then
 		audio_codec="libopus"
 		# 48000, because Opus only allows certain sampling rates (48000, 24000, 16000, 12000, 8000)
@@ -126,15 +162,23 @@ audio () {
 		sampling_rate=44100
 	fi
 	
-	audio_settings="-c:a $audio_codec -ac 2 -ar $sampling_rate -b:a ${audio_bitrate}K"
+	# Copy the input audio stream if it uses the same codec and the bitrate is smaller or equal to the chosen audio bitrate
+	# *1.05 since bitrate isn't an exact business
+	if [[ "$same_codec" = true && $(bc <<< "$input_audio_bitrate <= $audio_bitrate*1000*1.05") -eq 1 ]]; then
+		audio_settings="-c:a copy"
+	else
+		audio_settings="-c:a $audio_codec -ac 2 -ar $sampling_rate -b:a ${audio_bitrate}K"
+	fi
 }
 
 
 # Calculate important values for the encoding process
 calc () {
 	video_bitrate=$(bc <<< "($file_size*8*1000/$duration-$audio_bitrate+0.5)/1")
+	# Prevents negative bitrates for extreme file size limit / length combos
 	if (( video_bitrate <= 0 )); then video_bitrate=50; fi
 	bpp=$(bc <<< "scale=3; $video_bitrate*1000/($video_height*$video_width*$frame_rate)")
+	# In case of user defined scaling, since 2-pass encoding is mainly activated via new_bpp
 	new_bpp=$bpp
 }
 
@@ -144,9 +188,11 @@ calc () {
 # Video bitrate as input to be able to use it with adjusted bitrates as well
 downscale () {
 	new_video_height=$video_height
+	new_frame_rate=$frame_rate
+	new_bpp=$bpp
 	while (( $(bc <<< "$new_bpp < $bcc_threshold") && new_video_height > height_threshold*2 )); do
 		(( new_video_height -= 10 ))
-		new_bpp=$(bc <<< "scale=3; $1*1000/($new_video_height*$new_video_height*$aspect_ratio*$frame_rate)")
+		new_bpp=$(bc <<< "scale=3; $1*1000/($new_video_height*$new_video_height*$aspect_ratio*$new_frame_rate)")
 		scaling_factor="scale=-1:$new_video_height"
 	done
 	framedrop
@@ -161,13 +207,12 @@ downscale () {
 
 # Reduces frame rate if bpp value is higher than its threshold
 framedrop () {
-	if (( $(bc <<< "$new_bpp < $bcc_threshold") && $(bc <<< "$frame_rate > 24") )); then
+	if (( $(bc <<< "$new_bpp < $bcc_threshold") && $(bc <<< "$frame_rate >= 24") )); then
 		new_frame_rate=24
-		frame_settings="-r $new_frame_rate"
 	else 
 		new_frame_rate=$frame_rate
-		frame_settings="-r $frame_rate"
 	fi
+	frame_settings="-r $new_frame_rate"
 }
 
 
@@ -226,15 +271,15 @@ convert () {
 	
 	if [[ -n "$showcase_mode" && "$showcase_mode" != "video" ]]; then
 		if [[ "$animated_gif" = true ]]; then 
-			input_config=(-ignore_loop 0 -i "$picture_path" -ss "$start_time" -i "$input" -map 0:0 -map 1:a)
+			input_config=(-ignore_loop 0 -i "$picture_path" -ss "$start_time" -i "$input" -map 0:0 -map 1:a:0)
 		else
-			input_config=(-loop 1 -i "$picture_path" -ss "$start_time" -i "$input" -t "$duration")
+			input_config=(-loop 1 -i "$picture_path" -ss "$start_time" -i "$input" -map 0:0 -map 1:a:0 -t "$duration")
 		fi
 	else 
 		if [[ "${input##*.}" = "gif" ]]; then 
 			input_config=(-i "$input")
 		else
-			input_config=(-ss "$start_time" -i "$input"  -t "$duration")
+			input_config=(-ss "$start_time" -i "$input" -t "$duration")
 		fi
 	fi
 	
