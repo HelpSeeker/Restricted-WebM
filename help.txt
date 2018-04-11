@@ -13,6 +13,9 @@ A: Use "-u 0" in your command.
 Q: FFmpeg shows an error when using VP9/Opus instead of VP8/Vorbis ("Failed to set VP8E_SET_TUNING codec control: Invalid parameter. Additional information: Option --tune=ssim is not currently supported in VP9."). Should I be concerned?
 A: I don't think so. Using SSIM instead of PSNR produces better results with VP8. Apparently VP9 doesn't support the tune option (even though it's listed as an option in libvpx-vp9's documentation), but there aren't any consequences. FFmpeg simply ignores the option.
 
+Q: FFmpeg throws an error when I try to apply an audio filter ("Filtering and streamcopy cannot be used together."). Why is this happening?
+A: If the input audio stream has the same codec that the script is using (Vorbis or Opus) and its audio bitrate is less or equal the one being chosen by the script, then said input audio stream will be copied instead of re-encoded. Filters in general however can only be applied if a stream gets encoded, so ffmpeg throws an error. A work-around to this problem is to use the trim mode (which deactivates stream copying by default) and hit enter when asked for further input.
+
 Q: Why does the script pause at the beginning, when I scale manually?
 A: If you use the scale filter manually, then the script makes a test encode of the input video with your custom scale settings. Although it's just a second long and utilizes the fastest encoding setting, there might be a few seconds long delay depending on how big the resolution and/or how powerful your PC is.
 

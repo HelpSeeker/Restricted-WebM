@@ -164,7 +164,7 @@ audio () {
 	
 	# Copy the input audio stream if it uses the same codec and the bitrate is smaller or equal to the chosen audio bitrate
 	# *1.05 since bitrate isn't an exact business
-	if [[ "$same_codec" = true && $(bc <<< "$input_audio_bitrate <= $audio_bitrate*1000*1.05") -eq 1 ]]; then
+	if [[ "$same_codec" = true && $(bc <<< "$input_audio_bitrate <= $audio_bitrate*1000*1.05") -eq 1 && "$trim_mode" = false ]]; then
 		audio_settings="-c:a copy"
 	else
 		audio_settings="-c:a $audio_codec -ac 2 -ar $sampling_rate -b:a ${audio_bitrate}K"
@@ -207,6 +207,7 @@ downscale () {
 
 # Reduces frame rate if bpp value is higher than its threshold
 framedrop () {
+	if [[ "$user_scale" = true ]]; then new_bpp=$(bc <<< "scale=3; $1*1000/($video_height*$video_width*$frame_rate)"); fi
 	if (( $(bc <<< "$new_bpp < $bcc_threshold") && $(bc <<< "$frame_rate >= 24") )); then
 		new_frame_rate=24
 	else 
@@ -285,7 +286,7 @@ convert () {
 	
 	if [[ "$debug_mode" = true ]]; then
 		# Print various variables for debugging purposes
-		echo "Audio factor: $audio_factor"
+		#echo "Audio factor: $audio_factor"
 		#echo "Iteration: $i"
 		#echo "First try: $first_try"
 		#echo "Best try: $best_try"
@@ -296,7 +297,7 @@ convert () {
 		echo "Frame settings: $frame_settings"
 		echo "Bpp: $new_bpp"
 		#echo "Filters: $filter"
-		#echo "User scale: $user_scale"
+		echo "User scale: $user_scale"
 	else
 		if [[ "$animated_gif" = true || "${input##*.}" = "gif" ]]; then
 			if [[ ($(bc <<< "$new_bpp >= 0.075") -eq 1 && "$new_video_bitrate" -ge 400) || "$new_video_bitrate" -ge 2000 ]]; then
@@ -343,7 +344,7 @@ showcaseSettings () {
 # Function to summarize the first encoding cycle.
 initialEncode () {
 	if [[ "$showcase" = true ]]; then showcaseSettings 1; fi
-	if [[ "$user_scale" = false ]]; then downscale "$video_bitrate"; else framedrop; fi
+	if [[ "$user_scale" = false ]]; then downscale "$video_bitrate"; else framedrop "$video_bitrate"; fi
 	bitrate 1
 	video 1
 	convert
@@ -374,7 +375,7 @@ enhance () {
 	i=2
 	while (( $(bc <<< "$webm_size > $file_size*1024*1024") || $(bc <<< "$webm_size < $file_size*1024*1024*$undershoot_limit") )); do
 		bitrate "$i"
-		if [[ ($new_video_bitrate -lt $last_video_bitrate || $(bc <<< "$new_video_bitrate > $last_video_bitrate*1.4") -eq 1) && "$user_scale" = false ]]; then downscale "$new_video_bitrate"; else framedrop; fi
+		if [[ ($new_video_bitrate -lt $last_video_bitrate || $(bc <<< "$new_video_bitrate > $last_video_bitrate*1.4") -eq 1) && "$user_scale" = false ]]; then downscale "$new_video_bitrate"; else framedrop "$new_video_bitrate"; fi
 		video "$1"
 		convert
 		if [[ "$debug_mode" = true ]]; then echo "Debug mode: Enter webm size." && read -r webm_size; else webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm"); fi
@@ -403,7 +404,7 @@ limit () {
 	for (( i = start; i <= adjust_iterations; i++ ))
 	do
 		bitrate "$i"
-		if [[ $new_video_bitrate -lt $last_video_bitrate && "$user_scale" = false ]]; then downscale "$new_video_bitrate"; else framedrop; fi
+		if [[ $new_video_bitrate -lt $last_video_bitrate && "$user_scale" = false ]]; then downscale "$new_video_bitrate"; else framedrop "$new_video_bitrate"; fi
 		video "$1"
 		convert
 		if [[ "$debug_mode" = true ]]; then echo "Debug mode: Enter webm size." && read -r webm_size; else webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm"); fi
