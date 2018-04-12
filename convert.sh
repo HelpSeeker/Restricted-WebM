@@ -375,9 +375,16 @@ convert () {
 # Function to define frame rate settings for the audio showcase mode
 # Uses a counter as input to determine keyframe interval 
 showcaseSettings () {
-	# 
+	# Animated gif detection for auto and manual showcase option
+	# "0/0" is the default for static images
 	if [[ "$showcase_mode" != "video" ]]; then new_frame_rate=$(ffprobe -v error -show_entries stream=avg_frame_rate -of default=noprint_wrappers=1:nokey=1 "$picture_path"); else new_frame_rate="0/0"; fi
+	
+	# Main way of reducing the file size for the audio showcase mode
+	# Big keyframe intervals can decrease the size of a few minute long video stream to a few hundred KB
 	keyframe_interval=$(( 20 * $1 ))
+	
+	# Activates special gif treatment in case of an animated gif
+	# Makes sure that the normal adjuster is used and chooses a new audio bitrate based on the standard formula
 	if [[ "$new_frame_rate" != "0/0" ]]; then 
 		animated_gif=true
 		frame_rate=$new_frame_rate
@@ -390,7 +397,7 @@ showcaseSettings () {
 }
 
 
-# Function to summarize the first encoding cycle.
+# Function to summarize the first encoding cycle
 initialEncode () {
 	if [[ "$showcase" = true ]]; then showcaseSettings 1; fi
 	if [[ "$user_scale" = false ]]; then downscale "$video_bitrate"; else framedrop "$video_bitrate"; fi
@@ -400,39 +407,57 @@ initialEncode () {
 }
 
 
-# Reduce file size for audio showcase webms
-# Limited possibilities since ffprobe can't show the size of a single stream
+# Function to reduce file size for audio showcase webms
 showcaseAdjuster () {
+	# Determines the output file size via ffprobe. During debug mode the user can enter it manually to test various scenarios
 	if [[ "$debug_mode" = true ]]; then echo "Debug mode: Enter webm size." && read -r webm_size; else webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm"); fi
+	
 	counter=2
 	while (( $(bc <<< "$webm_size > $file_size*1024*1024") )); do
 		showcaseSettings "$counter"
 		convert
+		
 		if [[ "$debug_mode" = true ]]; then echo "Debug mode: Enter webm size." && read -r webm_size; else webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm"); fi
+		
 		if (( counter > adjust_iterations*2 )); then 
 			echo "File still doesn't fit the specified limit. Please use ffmpeg manually." 
 			echo "$input" >> ../too_large.txt
 			break
 		fi
+		
 		(( counter += 1 ))
 	done
 }
 
 
-# Quality adjustment to raise output above undershoot limit
+# Function to increase the file size if it's smaller than the undershoot limit
+# Needs the number of the bitrate mode as input
 enhance () {
 	i=2
 	while (( $(bc <<< "$webm_size > $file_size*1024*1024") || $(bc <<< "$webm_size < $file_size*1024*1024*$undershoot_limit") )); do
 		bitrate "$i"
+		
+		# Only define a new output height if the video is too big or the newly adjusted bitrate is 40% larger than the prior one
+		# Using downscale every time would make the produced file size far more unpredictable
 		if [[ ($new_video_bitrate -lt $last_video_bitrate || $(bc <<< "$new_video_bitrate > $last_video_bitrate*1.4") -eq 1) && "$user_scale" = false ]]; then downscale "$new_video_bitrate"; else framedrop "$new_video_bitrate"; fi
+		
 		video "$1"
 		convert
+		
 		if [[ "$debug_mode" = true ]]; then echo "Debug mode: Enter webm size." && read -r webm_size; else webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm"); fi
+		
+		# Saves settings to reproduce the best try
+		# The best try is the biggest file that still doesn't reach the undershoot limit
 		if (( webm_size > best_try && $(bc <<< "$webm_size < $file_size*1024*1024") )); then
 			best_try=$webm_size
 			best_try_bitrate=$new_video_bitrate
+			# This variable is later used to determine wheter or not the best try was also the last one
+			# If yes the script keeps the file instead of re-encoding the same webm again
 			attempt=$i
 		fi
+		
+		# Exits the loop after certain number of tries
+		# Either keeps the best try (if it was the last one) or encodes one last webm with the best try's settings
 		if (( i > adjust_iterations*2 && attempt <= adjust_iterations*2 )); then
 			use_best_try=true
 			new_video_bitrate=$best_try_bitrate
@@ -442,22 +467,34 @@ enhance () {
 		elif (( attempt > adjust_iterations*2 )); then
 			break
 		fi
+		
 		(( i += 1 ))
 	done
 }
 
 
-# Quality adjustment to force output into the file size limit
+# Function to decrease the file size if it's bigger than the file size limit
+# Needs the number of the bitrate mode as input
 limit () {
+	# Makes sure the very first encode attempt isn't done twice (already done once in the initialEncode function)
 	if (( $1 == 1 )); then start=2; else start=1; fi
+
 	for (( i = start; i <= adjust_iterations; i++ ))
 	do
 		bitrate "$i"
+		
 		if [[ $new_video_bitrate -lt $last_video_bitrate && "$user_scale" = false ]]; then downscale "$new_video_bitrate"; else framedrop "$new_video_bitrate"; fi
+		
 		video "$1"
 		convert
+		
 		if [[ "$debug_mode" = true ]]; then echo "Debug mode: Enter webm size." && read -r webm_size; else webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm"); fi
+		
+		# Exits the loop during the first bitrate mode, if the output file size is basically the same for 2 consecutive encodes
+		# "-qmax 50" will produce a certain minimum file size that cannot be lowered. This statement makes sure that the script switches to the next bitrate mode in such a case
 		if (( $1 == 1 && $(bc <<< "$webm_size < $first_try*1.01") && $(bc <<< "$webm_size > $first_try*0.99") )); then break; fi
+		
+		# Exits the loop as soon as the file size is lower than the file size limit (e.i. no need to lower it further)
 		if (( $(bc <<< "$webm_size < $file_size*1024*1024") )); then small_break=true; break; fi
 	done
 }
@@ -466,11 +503,19 @@ limit () {
 # Decide which steps to take based on the webm of the initial encode
 adjuster () {
 	if [[ "$debug_mode" = true ]]; then echo "Debug mode: Enter webm size." && read -r webm_size; else webm_size=$(ffprobe -v error -show_entries format=size -of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm"); fi
+	
+	# Sets default values for each file
 	first_try=$webm_size
 	mode_counter=1
 	use_best_try=false
 	small_break=false
+	
+	# This while loop will continue until:
+	# a) the output file size lies within the specified file size range (success)
+	# b) there are no more bitrate modes to go through (file too large)
+	# c) the enhance function has to utilize the best try (file too small)
 	while (( $(bc <<< "$webm_size > $file_size*1024*1024") || $(bc <<< "$webm_size < $file_size*1024*1024*$undershoot_limit") )); do
+
 		if [[ "$use_best_try" = true ]]; then
 			echo "Failed to raise output file size above undershoot limit." 
 			echo "$input" >> ../too_small_for_undershoot.txt
@@ -487,15 +532,19 @@ adjuster () {
 			attempt=1
 			enhance $mode_counter
 		fi
+		
+		# If the limit function produces a file within the specified file limit, small_break will become true
+		# This is done in case, that the file is smaller than the undershoot limit. Otherwise the enhance function would switch to the next bitrate mode instead of trying to raise the file size while using the same mode
 		if [[ "$small_break" = false ]]; then (( mode_counter += 1 )); fi
 	done
 }
+
 
 ####################
 # Main script 
 ####################
 
-# Read input parameters and assign values accordingly
+# Reads user set flags and additional settings from the command line and assigns values accordingly
 while getopts ":htaqc:ns:u:i:f:" ARG; do
 	case "$ARG" in
 	h) usage && exit;;
@@ -513,7 +562,7 @@ while getopts ":htaqc:ns:u:i:f:" ARG; do
 done
 
 
-# Set default values for unspecified parameters
+# Sets default values for unspecified flags/settings
 [[ -z $trim_mode ]] && trim_mode=false
 [[ -z $audio_mode ]] && audio_mode=false
 [[ -z $hq_mode ]] && hq_mode=false
@@ -521,6 +570,7 @@ done
 [[ -z $file_size ]] && file_size=3
 [[ -z $undershoot_limit ]] && undershoot_limit=0.75
 [[ -z $adjust_iterations ]] && adjust_iterations=3
+# Fail-safe to make sure that a valid showcase mode option was chosen
 if [[ -n $showcase_mode ]]; then
 	case $showcase_mode in
 		auto | manual | video) showcase=true && hq_mode=false;;
@@ -531,42 +581,34 @@ else
 fi
 
 
-# Set default conversion variables that are the same for all files
-# Might get overwritten if any corresponding flags are set
+# Sets default conversion variables that are the same for all files
+# Might get overwritten in the conversion loop if any corresponding flags are set
 audio_bitrate=0
 audio_settings="-an"
 start_time=0
 user_scale=false
-if [[ "$showcase" = true || "$hq_mode" = true ]]; then
-	bcc_threshold=0.075
-	height_threshold=180
-#~ elif [[ "$hq_mode" = true ]]; then
-	#~ bcc_threshold=0.075
-	#~ height_threshold=180	
-else
-	bcc_threshold=0.04
-	height_threshold=180
-fi
+height_threshold=180
+if [[ "$showcase" = true || "$hq_mode" = true ]]; then bcc_threshold=0.075; else bcc_threshold=0.04; fi
+contains "$filter_settings" "scale" && user_scale=true
 
 
-# Make sure showcase_pictures/ exists and there are any files in it, if the auto audio showcase mode is active
+# Makes sure showcase_pictures/ exists and there are any files in it, if the auto audio showcase mode is active
 # Used another for-loop, since wildcard matching doesn't work with test alone
 if [[ "$showcase_mode" = "auto" ]]; then
 	cd showcase_pictures 2> /dev/null || { echo "No showcase_pictures folder present" && exit; }
 	for file in *; do [[ -e "$file" ]] || { echo "No files present in showcase_pictures" && exit; }; break; done
 	cd ..
 fi
-# Change into sub-directory to avoid file conflicts when converting webms
+# Changes into sub-directory to avoid file conflicts when converting webms
 cd to_convert 2> /dev/null || { echo "No to_convert folder present" && exit; }
-# Make sure there are any files in to_convert/
+# Makes sure there are any files in to_convert/
 for file in *; do [[ -e "$file" ]] || { echo "No files present in to_convert" && exit; }; break; done
-# Create sub-directory for the finished webms
+# Creates sub-directory for the finished webms
 mkdir ../done 2> /dev/null
 
 
 # The main conversion loop
 for input in *; do (
-	contains "$filter_settings" "scale" && user_scale=true
 	if [[ "$showcase" = true ]]; then pathFinder; fi
 	info
 	if [[ "$user_scale" = true ]]; then scaleTest; fi
@@ -577,6 +619,8 @@ for input in *; do (
 	calc
 	initialEncode
 	if [[ "$showcase" = true ]]; then showcaseAdjuster; else adjuster; fi
+	# Removes 2-pass encoding log only right at the end to avoid unnecessary 1st pass encodes
 	rm ffmpeg2pass-0.log 2> /dev/null
+	# Resets special gif treatment during audio showcase mode in case gifs and normal pictures are mixed
 	if [[ "$animated_gif" = true ]]; then animated_gif=false && showcase=true; fi
 ); done
