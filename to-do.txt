@@ -1,9 +1,0 @@
-Stuff that still needs to be implemented / fixed (sorted by priority):
-
-	Update documentation
-	
-	Clean up code
-	
-	Add more comments in the script
-	
-	
