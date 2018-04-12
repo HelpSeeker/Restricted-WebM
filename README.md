@@ -1,5 +1,5 @@
 # Restricted-Webm
-A shell script to create webms within a certain file size limit (mainly targeted at 4chan).
+A bash script to create webms within a certain file size limit (mainly targeted at 4chan).
 
 The main goal is to produce webms that fit within a specified size limit, while producing the maximum possible quality and requiring minimum user input. If you want fast encoding speed, then this script isn't for you.  
 
@@ -53,30 +53,5 @@ Restricted-Webm/
 
 ```
 
-**Functions:**
 
-General:  
-- [x] Convert all videos from the to_convert folder into webms  
-- [x] Specify which file size limit to adhere to (default: 3MB)
-- [x] Specify which percentage of the file size limit must be utilized
-- [x] Option to use VP9/Opus instead of VP8/Vorbis  
-- [x] Trim each video individually (default: off)  
-- [x] Apply filters to all videos  
-- [x] Use each video's file name for the title metadata  
-- [x] List input files that cannot be forced into the specified size / undershoot limit
-- [x] Accept gif input for both audio showcase and standard mode
-
-Quality adjustments:  
-- [x] Calculate bitrate based on video length  
-- [x] Automatic downscaling if quality would be too low otherwise (disabled when using scale manually)
-- [x] Use 2-pass encoding automatically  
-- [x] Loop through bitrate settings to fit the file size into the specified limit  
-- [x] Adjust bitrate if the webm over-/undershoots the specified limit  
-- [x] Define how many encoding attempts are made for each bitrate mode  
-- [x] Reduce frame rate if quality is still too low after downscaling
-- [x] HQ (high quality) mode (higher bpp threshold during downscaling)
-
-Audio:  
-- [x] Encode with audio (default: off)  
-- [x] Adjust audio bitrate automatically (range: 48-128 kbps)
-- [x] Audio showcase mode (static image as video stream with high quality audio encoding)
+For further information consult the [wiki](https://github.com/HelpSeeker/Restricted-Webm/wiki)!
