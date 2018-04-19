@@ -260,13 +260,10 @@ bitrate () {
 		# New video bitrate is adjusted based on the output file size
 		new_video_bitrate=$(bc <<< "($last_video_bitrate*$file_size*1024*1024/$webm_size+0.5)/1")
 		
-		# Makes sure that the adjusted bitrate is at least 10% smaller / bigger than the prior one
+		# Makes sure that the adjusted bitrate (if smaller than the prior one) is at least 10% smaller
+		# No limit if adjusted bitrate is bigger than the prior one
 		difference=$(( last_video_bitrate - new_video_bitrate ))
-		if (( $(bc <<< "${difference#-} < $last_video_bitrate*0.1") && difference > 0 )); then
-			new_video_bitrate=$(bc <<< "($last_video_bitrate/1.1+0.5)/1")
-		elif (( $(bc <<< "${difference#-} < $last_video_bitrate*0.1") && difference < 0 )); then
-			new_video_bitrate=$(bc <<< "($last_video_bitrate*1.1+0.5)/1")
-		fi
+		if (( $(bc <<< "${difference#-} < $last_video_bitrate*0.1") && difference > 0 )); then new_video_bitrate=$(bc <<< "($last_video_bitrate/1.1+0.5)/1"); fi
 	fi
 }
 
@@ -332,22 +329,22 @@ convert () {
 	if [[ "$debug_mode" = true ]]; then
 		# Print various variables for debugging purposes
 		#echo "Audio factor: $audio_factor"
-		#echo "Iteration: $i"
+		echo "Iteration: $i"
 		#echo "First try: $first_try"
-		#echo "Best try: $best_try"
-		#echo "Best try bitrate: $best_try_bitrate"
+		echo "Best try: $best_try"
+		echo "Best try bitrate: $best_try_bitrate"
 		echo "Video settings: $video_settings"
 		#echo "Mode counter: $mode_counter"
-		#echo "Attempt: $attempt"
-		echo "Frame settings: $frame_settings"
+		echo "Attempt: $attempt"
+		#echo "Frame settings: $frame_settings"
 		echo "Bpp: $new_bpp"
 		#echo "Filters: $filter"
-		echo "User scale: $user_scale"
+		#echo "User scale: $user_scale"
 	else
 		# gifs need their own ffmpeg commands to avoid VP8 bug
 		# alternate reference frame must be specifically disabled (-auto-alt-ref) or ffmpeg will throw an error
 		if [[ "$animated_gif" = true || "${input##*.}" = "gif" ]]; then
-			if [[ ($(bc <<< "$new_bpp >= 0.075") -eq 1 && "$new_video_bitrate" -ge 400) || "$new_video_bitrate" -ge 2000 ]]; then
+			if [[ ($(bc <<< "$new_bpp >= 0.075") -eq 1 && $new_video_bitrate -ge 400) || $new_video_bitrate -ge 2000 ]]; then
 				echo -e "\\n\\n\\n"
 				[[ -e ffmpeg2pass-0.log ]] || ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings $video_settings -auto-alt-ref 0 -slices 8 -threads 1 -deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
 				echo -e "\\n\\n\\n"
@@ -359,7 +356,7 @@ convert () {
 		else
 			# 2-pass encoding is only viable for high quality encodes. Therefore minimum bitrate/bpp requirement.
 			# A high enough bitrate (and therefore the audio showcase mode) will also activate it
-			if [[ ($(bc <<< "$new_bpp >= 0.075") -eq 1 && "$new_video_bitrate" -ge 400) || "$new_video_bitrate" -ge 2000 || -n $showcase_mode ]]; then
+			if [[ ($(bc <<< "$new_bpp >= 0.075") -eq 1 && $new_video_bitrate -ge 400) || $new_video_bitrate -ge 2000 || -n $showcase_mode ]]; then
 				echo -e "\\n\\n\\n"
 				[[ -e ffmpeg2pass-0.log ]] || ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings $video_settings -slices 8 -threads 1 -deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
 				echo -e "\\n\\n\\n"
@@ -458,13 +455,13 @@ enhance () {
 		
 		# Exits the loop after certain number of tries
 		# Either keeps the best try (if it was the last one) or encodes one last webm with the best try's settings
-		if (( i > adjust_iterations*2 && attempt <= adjust_iterations*2 )); then
+		if (( i > adjust_iterations*2 )); then
+			if (( attempt <= adjust_iterations*2 )); then
+				new_video_bitrate=$best_try_bitrate
+				video "$1"
+				convert
+			fi
 			use_best_try=true
-			new_video_bitrate=$best_try_bitrate
-			video "$1"
-			convert
-			break
-		elif (( attempt > adjust_iterations*2 )); then
 			break
 		fi
 		
