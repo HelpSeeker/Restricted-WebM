@@ -280,8 +280,8 @@ video () {
 		video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v 10M"
 	else
 		case $1 in
-			1) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${new_video_bitrate}K";;
-			2) video_settings="-c:v $video_codec -crf 10 -b:v ${new_video_bitrate}K";;	
+			1) video_settings="-c:v $video_codec -qmax 50 -b:v ${new_video_bitrate}K";;
+			2) video_settings="-c:v $video_codec -b:v ${new_video_bitrate}K";;	
 			3) video_settings="-c:v $video_codec -minrate:v ${new_video_bitrate}K -maxrate:v ${new_video_bitrate}K -b:v ${new_video_bitrate}K";;
 			# Prior 4th bitrate mode. Can force videos in almost any file size limit, but will most likely produce a slide show, as it drops frames
 			# 4) video_settings="-c:v $video_codec -bufsize $bufsize -minrate:v ${video_bitrate}K -maxrate:v ${video_bitrate}K -b:v ${video_bitrate}K -skip_threshold 100";;
