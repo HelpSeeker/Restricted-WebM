@@ -1,0 +1,24 @@
+-) 2-pass encoding as soon as HQ mode is being used
+	
+	Using/tweaking the alternate reference frame seems to massively improve the result of 2-pass encoding.
+	Even with very low video bitrates 2-pass encoding seems to provide better results.
+	Currently testing whether or not I should remove the bitrate/bpp requirements for it. If yes, the -q/-c flag will ultimately decide between 2-pass and single pass.
+	
+-) Constant quality vs. constrained quality vs. VBR
+
+	After a quite extensive test of mine, I decided to use classic VBR over constrained quality (crf combined with b:v).
+	Far more important for the quality is setting qmax, which can be done regardless. 
+	Otherwise VBR is more stable when it comes to using a calculated birate. Constrained quality often massively under/overshoots the target filesize.
+	
+	Constant quality (crf with b:v 0) is still a mystery to me. It somehow heavily depends on 2-pass encoding (very low quality after scene cuts, when using single pass).
+	When used during 2-pass encoding, the results are mixed. Some frames look better than with VBR, others worse. In general there seems to be a problem with fast movement.
+	Gonna test it further, but right now it doesn't seem like it's worth including.
+	
+-) Colormatrix conversion
+
+	It was brought to my attention, that converting an HD video to webm using VP8, can lead to the colors being off. 
+	The reason seems to be that VP8 only supports BT.601, while HD videos usually use BT.709. 
+	To avoid it, this filter needs to be used: colormatrix=bt709:bt601
+	I'm have very little knowledge on the matter. There were cases, where I didn't notice any difference when using this filter and times, where I definitely did. 
+	
+	VP9 doesn't have this problem.
