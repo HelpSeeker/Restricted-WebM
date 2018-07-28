@@ -24,7 +24,7 @@ user_bpp=false
 
 # These values change the default limits of the script
 file_size=3
-undershoot_limit=0.75
+undershoot_limit=0.9
 adjust_iterations=3
 height_threshold=180
 bpp_threshold=0.04
