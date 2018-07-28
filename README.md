@@ -28,7 +28,7 @@ Main options:
 Advanced options:
 (default values can be changed permanently in the beginning of the script)
 
-	-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.75 (75%).
+	-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.9 (90%).
 	-i iterations: Define how many encoding attempts there will be for each bitrate mode. Default value is 3.
 	-g height_threshold: Set the minimum pixel height the output webm should have. Default value: 180.
 	-b bpp_threshold: Set the minimum bpp value the output webm should have (higher values -> higher quality, more downscaling). Default value: 0.04 for normal, 0.075 for HQ/audio showcase mode.
