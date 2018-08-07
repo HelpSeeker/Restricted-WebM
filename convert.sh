@@ -24,7 +24,7 @@ user_bpp=false
 
 # These values change the default limits of the script
 file_size=3
-undershoot_limit=0.9
+undershoot_limit=0.75
 adjust_iterations=3
 height_threshold=180
 bpp_threshold=0.04
@@ -41,7 +41,7 @@ hq_min_audio=96
 # Function to define help text for the -h flag
 usage () {
 	echo -e "Usage: $0 [-h] [-t] [-a] [-q] [-n] [-s file_size_limit] [-c { auto | manual | video }] [-f filters]"
-	echo -e "\\t\\t[-u undershoot_limit] [-i iterations] [-g height_threshold] [-b bpp_threshold]"
+	echo -e "\\t\\t[-u undershoot_limit] [-i iterations] [-g height_threshold] [-b bpp_threshold] [-m HQ_min_audio_bitrate]"
 	
 	echo -e "\\nMain options:\\n"
 	echo -e "\\t-h: Show Help."
@@ -64,10 +64,11 @@ usage () {
 	
 	echo -e "\\nAdvanced options:"
 	echo -e "(default values can be changed permanently in the beginning of the script)\\n"
-	echo -e "\\t-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.9 (90%)."
+	echo -e "\\t-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.75 (75%)."
 	echo -e "\\t-i iterations: Define how many encoding attempts there will be for each bitrate mode. Default value is 3."
 	echo -e "\\t-g height_threshold: Set the minimum pixel height the output webm should have. Default value: 180."
-	echo -e "\\t-b bpp_threshold: Set the minimum bpp value the output webm should have (higher values -> higher quality, more downscaling). Default value: 0.04 for normal, 0.075 for HQ/audio showcase mode.\n"
+	echo -e "\\t-b bpp_threshold: Set the minimum bpp value the output webm should have (higher values -> higher quality, more downscaling). Default value: 0.04 for normal, 0.075 for HQ/audio showcase mode."
+	echo -e "\\t-m HQ_min_audio_bitrate: Set the minimum audio bitrate for HQ mode. Default value: 96.\\n"
 }
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -147,7 +148,7 @@ scaleTest () {
 					-an "../done/${input%.*}.webm"
 	else
 		ffmpeg -y -hide_banner -loglevel panic -i "$input" \
-					-t 0.1 -c:v libvpx -crf 10 -deadline good -cpu-used 5 -auto-alt-ref 0 \
+					-t 1 -c:v libvpx -crf 10 -deadline good -cpu-used 5 -auto-alt-ref 0 \
 					-filter_complex $filter_settings -an "../done/${input%.*}.webm"
 	fi
 	
@@ -357,13 +358,13 @@ bitrate () {
 		last_video_bitrate=$new_video_bitrate
 		
 		# Adjust new video bitrate based on output file size
-		new_video_bitrate=$(bc <<< "($last_video_bitrate*$file_size*1024*1024/$webm_size+0.5)/1")
+		new_video_bitrate=$(bc <<< "$last_video_bitrate*$file_size*1024*1024/$webm_size")
 		
 		# Ensure a minimum decrease of 10%
 		# No minimal increase percentage 
 		difference=$(( last_video_bitrate - new_video_bitrate ))
 		if (( $(bc <<< "${difference#-} < $last_video_bitrate*0.1") && difference > 0 )); then 
-			new_video_bitrate=$(bc <<< "($last_video_bitrate/1.1+0.5)/1")
+			new_video_bitrate=$(bc <<< "$last_video_bitrate/1.1")
 		fi
 	fi
 }
@@ -436,8 +437,6 @@ input() {
 					-i "$input" -map 0:0 -map 1:a:0 -t "$duration")
 		fi
 	else
-		# TODO:
-		# Look into gif trimming. It works for the scale test, so why shouldn't it here?
 		if [[ "${input##*.}" = "gif" ]]; then 
 			# no trim settings, as they cannot be applied to gifs
 			input_config=(-i "$input")
@@ -493,7 +492,7 @@ convert () {
 				# Only do 1st pass, if no log file present
 				[[ -e ffmpeg2pass-0.log ]] || ffmpeg -y -hide_banner "${input_config[@]}" \
 					$frame_settings $video_settings -auto-alt-ref 0 -slices 8 -threads 1 \
-					-deadline good -cpu-used 5 -an -pass 1 -f webm /dev/null
+					-deadline good -cpu-used 5 $filter -an -pass 1 -f webm /dev/null
 				
 				echo -e "\\n\\n"
 				
@@ -519,7 +518,7 @@ convert () {
 				# Only do 1st pass, if no log file present
 				[[ -e ffmpeg2pass-0.log ]] || ffmpeg -y -hide_banner "${input_config[@]}" \
 					$frame_settings $video_settings -slices 8 -threads 1 -deadline good \
-					-cpu-used 5 -an -pass 1 -f webm /dev/null
+					-cpu-used 5 $filter -an -pass 1 -f webm /dev/null
 				
 				echo -e "\\n\\n"
 				
@@ -604,15 +603,14 @@ showcaseAdjuster () {
 		webm_size=$(ffprobe -v error -show_entries format=size \
 					-of default=noprint_wrappers=1:nokey=1 "../done/${input%.*}.webm")
 	fi
-	
-	# TODO: Make sure counter variable have the same name (i) if possible
+
 	# First try done in initialEncode
-	counter=2
+	i=2
 	
 	# Increase keyframe interval until webm size < file size limit
 	# No undershoot limit for audio showcase mode
 	while (( $(bc <<< "$webm_size > $file_size*1024*1024") )); do
-		showcaseSettings "$counter"
+		showcaseSettings "$i"
 		convert
 		
 		# Determine output file size via ffprobe
@@ -626,13 +624,13 @@ showcaseAdjuster () {
 		
 		# Break loop if not able to make webm small enough (6 tries by default)
 		# Add filename to too_large.txt
-		if (( counter > adjust_iterations*2 )); then 
+		if (( i >= adjust_iterations*2 )); then 
 			echo "File still doesn't fit the specified limit. Please use ffmpeg manually." 
 			echo "$input" >> ../too_large.txt
 			break
 		fi
 		
-		(( counter += 1 ))
+		(( i++ ))
 	done
 }
 
@@ -696,7 +694,7 @@ enhance () {
 			break
 		fi
 		
-		(( i += 1 ))
+		(( i++ ))
 	done
 }
 
@@ -792,7 +790,7 @@ adjuster () {
 		
 		# Keep current bitrate mode, if limit succeeds
 		# Prevents the wrong bitrate mode being used by enhance (if webm size < undershoot limit)
-		if [[ "$small_break" = false ]]; then (( mode_counter += 1 )); fi
+		if [[ "$small_break" = false ]]; then (( mode_counter++ )); fi
 	done
 }
 
@@ -801,7 +799,7 @@ adjuster () {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Read user set flags
-while getopts ":htaqns:c:f:u:i:g:b:" ARG; do
+while getopts ":htaqns:c:f:u:i:g:b:m:" ARG; do
 	case "$ARG" in
 	h) usage && exit;;
 	t) trim_mode=true;;
@@ -814,7 +812,8 @@ while getopts ":htaqns:c:f:u:i:g:b:" ARG; do
 	u) undershoot_limit="$OPTARG";;
 	i) adjust_iterations="$OPTARG";;
 	g) height_threshold="$OPTARG";;
-	b) bpp_threshold="$OPTARG" && user_bpp=true;;	
+	b) bpp_threshold="$OPTARG" && user_bpp=true;;
+	m) hq_min_audio="$OPTARG";;
 	*) echo "Unknown flag used. Use $0 -h to show all available options." && exit;;
 	esac;
 done

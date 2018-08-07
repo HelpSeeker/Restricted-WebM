@@ -1,8 +1,8 @@
 -) 2-pass encoding as soon as HQ mode is being used
 	
-	Using/tweaking the alternate reference frame seems to massively improve the result of 2-pass encoding.
-	Even with very low video bitrates 2-pass encoding seems to provide better results.
-	Currently testing whether or not I should remove the bitrate/bpp requirements for it. If yes, the -q/-c flag will ultimately decide between 2-pass and single pass.
+	After additional tests, even the tweaked 2-pass commands generally produce worse results than single pass for b:v <200.
+	Perhaps I'm going to add a warning/prompt and let the user decide how to proceed.
+	Problem is, that would interfere with continuous encoding.
 	
 -) Constant quality vs. constrained quality vs. VBR
 
@@ -16,9 +16,18 @@
 	
 -) Colormatrix conversion
 
-	It was brought to my attention, that converting an HD video to webm using VP8, can lead to the colors being off. 
-	The reason seems to be that VP8 only supports BT.601, while HD videos usually use BT.709. 
-	To avoid it, this filter needs to be used: colormatrix=bt709:bt601
-	I'm have very little knowledge on the matter. There were cases, where I didn't notice any difference when using this filter and times, where I definitely did. 
+	If the input video has a BT.709 color matrix, then the colors of the produced webm will be slightly off if VP8 is used.
+	This is due to VP8 only supporting the BT.601 color matrix. The filter colormatrix=bt709:bt601 solves this problem.
+	Still trying to figure out how to detect the input color matrix reliable via ffprobe. At least I'm going to add a warning to the wiki.
+
+-) Options creep
+
+	I think it's necessary to provide options to temporarily override the most important constants of the script.
+	At the same time this make the help text and commands more complicated and after all I wanted to make a script with minimal user input.
+	Perhaps I'm going to add an advanced option menu with select+case.
 	
-	VP9 doesn't have this problem.
+-) File size adjustment during audio showcase mode
+
+	Currently the video option is prone to result in too large files, if the input video stream isn't a static picture.
+	The resulting slideshow doesn't get affected that much by increasing the keyframe interval.
+	Further downscaling would solve this problem. Not sure if I'm only gonna do it for the video option or auto/manual as well.
