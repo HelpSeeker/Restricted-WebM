@@ -9,7 +9,7 @@ Usage: convert.sh [-h] [-t] [-a] [-q] [-n] [-s file_size_limit] [-c { auto | man
 	
 Main options:
 
-    -h: Show Help.
+	-h: Show Help.
 	-t: Enable trim mode.
 	-a: Enable audio encoding.
 	-q: Enable HQ (high quality) mode. Doesn't work if you manually use the scale filter.
@@ -20,7 +20,7 @@ Main options:
 	        all other boards: 3MB - no audio allowed - max. 120 seconds
 	    8chan limits:
 	        all boards: 8MB - audio allowed
-    -c { auto | manual | video }: Enable audio showcase mode. Supersedes -a, -u and -q flag.
+	-c { auto | manual | video }: Enable audio showcase mode. Supersedes -a, -u and -q flag.
 	    auto: Use images with matching filename in showcase_pictures
 	    manual: Enter path to picture manually for each video
 	    video: Apply settings to videos in to_convert
