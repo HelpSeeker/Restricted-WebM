@@ -65,4 +65,4 @@ Restricted-Webm/
 ```
 
 
-For further information consult the [wiki](https://gitlab.com/HelpSeeker/Restricted-Webm/wikis/home)!
+For further information consult the [wiki](https://github.com/HelpSeeker/Restricted-Webm/wiki)!
