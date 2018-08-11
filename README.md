@@ -5,11 +5,11 @@ The goal is to produce webms that fit within a specified size limit, while produ
 
 ```
 Usage: convert.sh [-h] [-t] [-a] [-q] [-n] [-x cores] [-s file_size_limit] [-c { auto | manual | video }] [-f filters] 
-				  [-u undershoot_limit] [-i iterations] [-g height_threshold] [-b bpp_threshold] [-m HQ_min_audio_bitrate]
+		    [-u undershoot_limit] [-i iterations] [-g height_threshold] [-b bpp_threshold] [-m HQ_min_audio_bitrate]
 	
 Main options:
 
-    -h: Show Help.
+	-h: Show Help.
 	-t: Enable trim mode.
 	-a: Enable audio encoding.
 	-q: Enable HQ (high quality) mode. Doesn't work if you manually use the scale filter.
@@ -21,7 +21,7 @@ Main options:
 	        all other boards: 3MB - no audio allowed - max. 120 seconds
 	    8chan limits:
 	        all boards: 8MB - audio allowed
-    -c { auto | manual | video }: Enable audio showcase mode. Supersedes -a, -u and -q flag.
+	-c { auto | manual | video }: Enable audio showcase mode. Supersedes -a, -u and -q flag.
 	    auto: Use images with matching filename in showcase_pictures
 	    manual: Enter path to picture manually for each video
 	    video: Apply settings to videos in to_convert
@@ -34,7 +34,7 @@ Advanced options:
 	-i iterations: Define how many encoding attempts there will be for each bitrate mode. Default value is 3.
 	-g height_threshold: Set the minimum pixel height the output webm should have. Default value: 180.
 	-b bpp_threshold: Set the minimum bpp value the output webm should have (higher values -> higher quality, more downscaling). 
-					  Default value: 0.04 for normal, 0.075 for HQ/audio showcase mode.
+			    Default value: 0.04 for normal, 0.075 for HQ/audio showcase mode.
 	-m HQ_min_audio_bitrate: Set the minimum audio bitrate for HQ mode. Default value: 96.
 ```
 
@@ -66,4 +66,4 @@ Restricted-Webm/
 ```
 
 
-For further information consult the [wiki](https://gitlab.com/HelpSeeker/Restricted-Webm/wikis/home)!
+For further information consult the [wiki](https://github.com/HelpSeeker/Restricted-Webm/wiki)!
