@@ -16,6 +16,7 @@ audio_mode=false
 hq_mode=false
 showcase=false
 new_codecs=false
+parallel_convert=false
 audio_bitrate=0
 audio_settings="-an"
 start_time=0
@@ -24,6 +25,7 @@ user_bpp=false
 
 # These values change the default limits of the script
 file_size=3
+parallel_process=1
 undershoot_limit=0.75
 adjust_iterations=3
 height_threshold=180
@@ -39,8 +41,8 @@ hq_min_audio=96
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Function to define help text for the -h flag
-usage () {
-	echo -e "Usage: $0 [-h] [-t] [-a] [-q] [-n] [-s file_size_limit] [-c { auto | manual | video }] [-f filters]"
+usage() {
+	echo -e "Usage: $0 [-h] [-t] [-a] [-q] [-n] [-x cores] [-s file_size_limit] [-c { auto | manual | video }] [-f filters]"
 	echo -e "\\t\\t[-u undershoot_limit] [-i iterations] [-g height_threshold] [-b bpp_threshold] [-m HQ_min_audio_bitrate]"
 	
 	echo -e "\\nMain options:\\n"
@@ -49,6 +51,7 @@ usage () {
 	echo -e "\\t-a: Enable audio encoding."
 	echo -e "\\t-q: Enable HQ (high quality) mode. Doesn't work if you manually use the scale filter."
 	echo -e "\\t-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis."
+	echo -e "\\t-x cores: Fast encoding mode (experimental). For 100% CPU usage specify your CPU's number of cores."
 	echo -e "\\t-s file_size_limit: Specify the file size limit in MB. Default value is 3."
 	echo -e "\\t\\t4chan limits:"
 	echo -e "\\t\\t\\t/gif/ and /wsg/: 4MB - audio allowed - max. 300 seconds"
@@ -76,7 +79,7 @@ usage () {
 
 # Look for certain substring $2 within a string $1
 # If substring is found (e.i. $1 contains the substring) -> Success
-contains () {
+contains() {
 	case "$1" in 
 		*"$2"*) return 0;;
 		*) return 1;;
@@ -87,7 +90,7 @@ contains () {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Get picture path for audio showcase mode
-pathFinder () {
+pathFinder() {
 	if [[ "$showcase_mode" = "manual" ]]; then
 		echo "Manual audio showcase mode:"
 		echo "Enter image path for $input"
@@ -102,7 +105,7 @@ pathFinder () {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Get important video properties for later calculations (via ffprobe)
-info () {
+info() {
 	length=$(ffprobe -v error -show_entries format=duration \
 					-of default=noprint_wrappers=1:nokey=1 "$input")
 	
@@ -138,12 +141,12 @@ info () {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Determine height/width of the output, when a user defined scale filter is being used
-scaleTest () {
+scaleTest() {
 	# Encode 1s with the user defined scale filter. 
 	# No output will appear in the console
 	if [[ "$showcase_mode" = "auto" || "$showcase_mode" = "manual" ]]; then
 		ffmpeg -y -hide_banner -loglevel panic -loop 1 -i "$picture_path" -i "$input" \
-					-map 0:0 -map 1:a -t 1 -pix_fmt yuv420p -c:v libvpx -crf 10 \
+					-map 0:0 -map 1:a -t 1 -c:v libvpx -crf 10 \
 					-deadline good -cpu-used 5 -filter_complex $filter_settings \
 					-an "../done/${input%.*}.webm"
 	else
@@ -165,7 +168,7 @@ scaleTest () {
 
 # Determine codec/size of the input audio
 # If Vorbis/Opus and feasible bitrate -> copy audio
-audioTest () {
+audioTest() {
 	# Reset main test value for each file
 	same_codec=false
 	
@@ -194,7 +197,7 @@ audioTest () {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Get start/end time for trimming
-trim () {
+trim() {
 	# Prompt user to specify start/end time (in seconds)
 	echo "Current file: $input"
 	echo "Please specify where to start encoding (in seconds). Leave empty to start at the beginning of the input video."
@@ -213,7 +216,7 @@ trim () {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Define audio codec and its settings
-audio () {
+audio() {
 	# Determine input audio stream properties via audioTest
 	audioTest
 
@@ -267,7 +270,8 @@ audio () {
 	# Automatically disabled if trim mode is active
 	if [[ "$same_codec" = true && \
 			$(bc <<< "$input_audio_bitrate <= $audio_bitrate*1000*1.05") -eq 1 && \
-			"$trim_mode" = false ]]; then
+			"$trim_mode" = false && \
+			"$parallel_convert" = false ]]; then
 		audio_settings="-c:a copy"
 	else
 		audio_settings="-c:a $audio_codec -ac 2 -ar $sampling_rate -b:a ${audio_bitrate}K"
@@ -278,7 +282,7 @@ audio () {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Calculate important values (first video bitrate, original bpp value)
-calc () {
+calc() {
 	video_bitrate=$(bc <<< "$file_size*8*1000/$duration-$audio_bitrate")
 	# Prevent negative bitrate for extreme file size limit / length combos
 	if (( video_bitrate <= 0 )); then video_bitrate=50; fi
@@ -290,7 +294,7 @@ calc () {
 
 # Downscale output based on bpp value
 # Needs video bitrate as input argument
-downscale () {
+downscale() {
 	# Reset start values for each call
 	new_video_height=$video_height
 	new_frame_rate=$frame_rate
@@ -325,7 +329,7 @@ downscale () {
 
 # Reduce frame rate
 # Needs video bitrate as input argument
-framedrop () {
+framedrop() {
 	# Calculates new_bpp if user defined scale filter 
 	# Necessary, since downscale would be disabled
 	if [[ "$user_scale" = true ]]; then 
@@ -348,7 +352,7 @@ framedrop () {
 
 # Adjust video bitrate
 # Try counter as input argument (first try for a bitrate mode?)
-bitrate () {
+bitrate() {
 	if (( $1 == 1 )); then
 		# Each bitrate mode begins with the initially calculated bitrate
 		last_video_bitrate=$video_bitrate
@@ -378,7 +382,7 @@ bitrate () {
 # 2: VBR without qmax
 # 3: CBR
 # 4 (not used anymore): CBR and allow to drop frames
-video () {
+video() {
 	# Set libvpx-vp9 (VP9) or libvpx (VP8) as vcodec (based on -n flag)
 	if [[ "$new_codecs" = true ]]; then video_codec="libvpx-vp9"; else video_codec="libvpx"; fi
 	
@@ -387,6 +391,18 @@ video () {
 		# Basically constant quality with crf 10 (i.e. -crf 10 -b:v 0)
 		# As reference: Results slightly worse than libx264 with crf 18
 		video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v 10M"
+	elif [[ "$parallel_convert" = true ]]; then
+		# Parallel encoding can explode the file size, when
+		# a) VBR is used in combination with a very high bitrate
+		# b) Constant quality is used in combination with high crf values
+		# Constrained quality seems to be stable for the whole spectrum
+		case $1 in
+			1) video_settings="-c:v $video_codec -crf 10 -qmax 50 -b:v ${new_video_bitrate}K";;
+			2) video_settings="-c:v $video_codec -crf 10 -b:v ${new_video_bitrate}K";;	
+			3) video_settings="-c:v $video_codec -minrate:v ${new_video_bitrate}K \
+					-maxrate:v ${new_video_bitrate}K -b:v ${new_video_bitrate}K";;
+			*) echo "Unknown bitrate mode!";;
+		esac
 	else
 		case $1 in
 			1) video_settings="-c:v $video_codec -qmax 50 -b:v ${new_video_bitrate}K";;
@@ -449,6 +465,27 @@ input() {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+# Define input/trim/mapping options for multiConversion
+# Video part counter as input argument
+multiInput() {
+	parallel_duration=$(bc <<< "scale=3; $duration/$parallel_process")
+	
+	parallel_start=$(bc <<< "scale=3; $start_time+$parallel_duration*$1")
+	
+	# ../../$input because the dir at this point is temp/$1
+	# This avoids conflicts with several 2-pass logs
+	if [[ -n "$showcase_mode" && "$showcase_mode" != "video" ]]; then
+		# -loop 1 to infinitely loop the input picture to the input audio
+		input_config=(-loop 1 -i "../../$picture_path" -ss "$parallel_start" \
+					-i "../../$input" -map 0:0 -map 1:a:0 -t "$parallel_duration")
+	else
+		input_config=(-ss "$parallel_start" -i "../../$input" -t "$parallel_duration")
+	fi
+}
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 # Print calculated/chosen values during debug mode
 debug() {
 	echo -e "\\n\\n"
@@ -472,7 +509,7 @@ debug() {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Convert video via ffmpeg
-convert () {
+convert() {
 	# Get final filter string
 	concatenate
 	
@@ -496,7 +533,7 @@ convert () {
 				
 				echo -e "\\n\\n"
 				
-				ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings -pix_fmt yuv420p \
+				ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings \
 					$video_settings -tune ssim -slices 8 -threads 1 -metadata title="${input%.*}" \
 					-auto-alt-ref 0 -deadline good -cpu-used 0 $filter \
 					$audio_settings -pass 2 "../done/${input%.*}.webm"
@@ -505,7 +542,7 @@ convert () {
 			else
 				echo -e "\\n\\n"
 				
-				ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings -pix_fmt yuv420p \
+				ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings \
 					$video_settings -tune ssim -slices 8 -threads 1 -metadata title="${input%.*}" \
 					-auto-alt-ref 0 -deadline good -cpu-used 0 $filter \
 					$audio_settings "../done/${input%.*}.webm"
@@ -542,9 +579,76 @@ convert () {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+multiConvert() {
+	# Get final filter string
+	concatenate
+	
+	if [[ "$debug_mode" = true ]]; then
+		debug
+	else
+		mkdir temp 2> /dev/null
+		
+		for (( j=0; j<parallel_process; j++ ))
+		do	
+		{
+			# Create directory for each video part
+			# This avoids conflicts with several 2-pass logs
+			# Not necessary for single pass, but allows to use the same multiInput
+			mkdir temp/$j 2> /dev/null
+			cd temp/$j || { echo "Error in multiConvert! No dir temp/$j present." && exit; }
+			
+			# Get input/trim/mapping options
+			multiInput "$j"
+			
+			# 2-pass encoding automatically used for HQ and audio showcase mode
+			if [[ "$hq_mode" = true || -n $showcase_mode ]]; then
+				echo -e "\\n\\n"
+			
+				# Only do 1st pass, if no log file present
+				[[ -e ffmpeg2pass-0.log ]] || ffmpeg -y -hide_banner "${input_config[@]}" \
+					$frame_settings $video_settings -slices 8 -threads 1 -deadline good \
+					-cpu-used 5 $filter -an -pass 1 -f webm /dev/null
+					
+				echo -e "\\n\\n"
+			
+				ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings $video_settings \
+					-tune ssim -slices 8 -threads 1 -auto-alt-ref 1 \
+					-lag-in-frames 25 -arnr-maxframes 15 -arnr-strength 3 -deadline good \
+					-cpu-used 0 $filter $audio_settings -pass 2 "${j}.webm"
+					
+			else
+				# Single pass encoding used during normal mode
+				echo -e "\\n\\n"
+			
+				ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings $video_settings \
+					-tune ssim -slices 8 -threads 1 -deadline good \
+					-cpu-used 0 $filter $audio_settings "${j}.webm"
+			fi
+			
+			cd ../..
+		} &
+		done
+		
+		wait
+		
+		for (( j=0; j<parallel_process; j++ ))
+		do
+			echo "file 'temp/${j}/${j}.webm'" >> list.txt
+		done
+		
+		ffmpeg -y -hide_banner -f concat -i list.txt -c copy \
+					-metadata title="${input%.*}" "../done/${input%.*}.webm"
+					
+		rm -rf list.txt temp/
+	fi
+}
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 # Define settings for the audio showcase mode
 # Try counter as input argument 
-showcaseSettings () {
+showcaseSettings() {
 	# Animated gif detection for auto and manual showcase option
 	# They receive normal video treatment
 	# "0/0" is the default for static images
@@ -576,7 +680,7 @@ showcaseSettings () {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # First encoding cycle
-initialEncode () {
+initialEncode() {
 	if [[ "$showcase" = true ]]; then showcaseSettings 1; fi
 	
 	if [[ "$user_scale" = false ]]; then 
@@ -587,14 +691,15 @@ initialEncode () {
 	
 	bitrate 1
 	video 1
-	convert
+	
+	if [[ "$parallel_convert" = true ]]; then multiConvert; else convert; fi
 }
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # File size adjuster for audio showcase mode
-showcaseAdjuster () {
+showcaseAdjuster() {
 	# Determine output file size via ffprobe
 	# Entered manually during debug mode
 	if [[ "$debug_mode" = true ]]; then 
@@ -611,7 +716,7 @@ showcaseAdjuster () {
 	# No undershoot limit for audio showcase mode
 	while (( $(bc <<< "$webm_size > $file_size*1024*1024") )); do
 		showcaseSettings "$i"
-		convert
+		if [[ "$parallel_convert" = true ]]; then multiConvert; else convert; fi
 		
 		# Determine output file size via ffprobe
 		# Entered manually during debug mode
@@ -639,7 +744,7 @@ showcaseAdjuster () {
 
 # Adjust file size for too small webms (webm size < undershoot limit)
 # Number of bitrate mode as input argument
-enhance () {
+enhance() {
 	i=2
 	while (( $(bc <<< "$webm_size > $file_size*1024*1024") || \
 					$(bc <<< "$webm_size < $file_size*1024*1024*$undershoot_limit") )); do
@@ -660,7 +765,7 @@ enhance () {
 		fi
 		
 		video "$1"
-		convert
+		if [[ "$parallel_convert" = true ]]; then multiConvert; else convert; fi
 		
 		# Determine output file size via ffprobe
 		# Entered manually during debug mode
@@ -687,7 +792,7 @@ enhance () {
 			if (( attempt <= adjust_iterations*2 )); then
 				new_video_bitrate=$best_try_bitrate
 				video "$1"
-				convert
+				if [[ "$parallel_convert" = true ]]; then multiConvert; else convert; fi
 			fi
 			# Flag to break loop in adjuster
 			use_best_try=true
@@ -703,7 +808,7 @@ enhance () {
 
 # Adjust file size for too large webms
 # Number of bitrate mode as input argument
-limit () {
+limit() {
 	# If first bitrate mode, first encode was done in initialEncode
 	if (( $1 == 1 )); then start=2; else start=1; fi
 
@@ -719,7 +824,7 @@ limit () {
 		fi
 		
 		video "$1"
-		convert
+		if [[ "$parallel_convert" = true ]]; then multiConvert; else convert; fi
 		
 		# Determine output file size via ffprobe
 		# Entered manually during debug mode
@@ -749,7 +854,7 @@ limit () {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Decide which steps to take based on the output of initialEncode
-adjuster () {
+adjuster() {
 	# Determine output file size via ffprobe
 	# Entered manually during debug mode
 	if [[ "$debug_mode" = true ]]; then 
@@ -799,13 +904,14 @@ adjuster () {
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Read user set flags
-while getopts ":htaqns:c:f:u:i:g:b:m:" ARG; do
+while getopts ":htaqnx:s:c:f:u:i:g:b:m:" ARG; do
 	case "$ARG" in
 	h) usage && exit;;
 	t) trim_mode=true;;
 	a) audio_mode=true;;
 	q) hq_mode=true;;
 	n) new_codecs=true;;
+	x) parallel_process="$OPTARG" && parallel_convert=true;;
 	s) file_size="$OPTARG";;
 	c) showcase_mode="$OPTARG" && showcase=true;;
 	f) filter_settings="$OPTARG";;
@@ -835,6 +941,21 @@ if [[ "$showcase" = true ]]; then
 		auto | manual | video);;
 		*) echo "Invalid option for audio showcase mode!" && exit;;
 	esac
+fi
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Animated gifs are prone to throw errors when split
+# Reverts to normal convert for all gifs
+# Static gifs should work, but there's currently no check
+if [[ "$animated_gif" = true || "${input##*.}" = "gif" ]]; then
+	parallel_process=1
+fi
+
+# Revert back to normal convert if <= 1 thread is specified
+if (( parallel_process <= 1 )); then
+	parallel_convert=false
 fi
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
