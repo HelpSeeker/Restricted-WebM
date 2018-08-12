@@ -16,8 +16,9 @@
 	
 -) Colormatrix conversion
 
-	If the input video has a BT.709 color matrix, then the colors of the produced webm will be slightly off if VP8 is used.
-	This is due to VP8 only supporting the BT.601 color matrix. The filter colormatrix=bt709:bt601 solves this problem.
+	If the input video has a BT.709 color matrix, then the colors of the produced webm may be slightly off.
+	This is always the case for VP8 as it only supports the BT.601 color matrix and also happens with VP9, if the produced webm isn't HD as well. 
+	The filter colormatrix=bt709:bt601 solves this problem.
 	Still trying to figure out how to detect the input color matrix reliable via ffprobe. At least I'm going to add a warning to the wiki.
 
 -) Options creep
