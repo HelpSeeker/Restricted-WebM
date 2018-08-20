@@ -49,7 +49,7 @@ usage() {
 	echo -e "\\t-h: Show Help."
 	echo -e "\\t-t: Enable trim mode."
 	echo -e "\\t-a: Enable audio encoding."
-	echo -e "\\t-q: Enable HQ (high quality) mode. Doesn't work if you manually use the scale filter."
+	echo -e "\\t-q: Enable HQ (high quality) mode. Higher bpp threshold, higher min. audio bitrate and 2-pass encoding."
 	echo -e "\\t-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis."
 	echo -e "\\t-x cores: Fast encoding mode (experimental). For 100% CPU usage specify your CPU's number of cores."
 	echo -e "\\t-s file_size_limit: Specify the file size limit in MB. Default value is 3."
