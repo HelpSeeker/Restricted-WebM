@@ -12,7 +12,7 @@ Main options:
 	-h: Show Help.
 	-t: Enable trim mode.
 	-a: Enable audio encoding.
-	-q: Enable HQ (high quality) mode. Doesn't work if you manually use the scale filter.
+	-q: Enable HQ (high quality) mode. Higher bpp threshold, higher min. audio bitrate and 2-pass encoding.
 	-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis.
 	-x cores: Fast encoding mode (experimental). For 100% CPU usage specify your CPU's number of cores.
 	-s file_size_limit: Specify the file size limit in MB. Default value is 3.
