@@ -32,3 +32,11 @@
 	Currently the video option is prone to result in too large files, if the input video stream isn't a static picture.
 	The resulting slideshow doesn't get affected that much by increasing the keyframe interval.
 	Further downscaling would solve this problem. Not sure if I'm only gonna do it for the video option or auto/manual as well.
+
+-) Quality fluctuations during fast encoding mode
+
+	In general the fast encoding mode provides inferior results for difficult encodes. 
+	Surprisingly it seems to be the opposite for very easy encodes.
+	Could it be that CQ produces a better quality at high bitrates than VBR? I compared them thoroughly with difficult encodes 
+	(720p/1080p footage, often more than a minute long with a 4MB limit), but not with easy ones. I should definitely do this as well.
+	If it's true, then I'll switch back from VBR to CQ.
