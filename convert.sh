@@ -10,18 +10,15 @@ debug_mode=false
 # Default settings
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# Don't touch these, unless you want to mess with / break the script's main functionality
+# These values represent the script's default behaviour
 trim_mode=false
 audio_mode=false
 hq_mode=false
 showcase=false
 new_codecs=false
 parallel_convert=false
-audio_bitrate=0
-audio_settings="-an"
-start_time=0
-user_scale=false
-user_bpp=false
+parallel_afilter=false
+ask_parallel_afilter=true
 
 # These values change the default limits of the script
 file_size=3
@@ -36,13 +33,20 @@ hq_bpp_threshold=0.075
 # http://listening-test.coresv.net/results.htm
 hq_min_audio=96
 
+# Don't touch these
+audio_bitrate=0
+audio_settings="-an"
+start_time=0
+user_scale=false
+user_bpp=false
+
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Functions
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Function to define help text for the -h flag
 usage() {
-	echo -e "Usage: $0 [-h] [-t] [-a] [-q] [-n] [-x cores] [-s file_size_limit] [-c { auto | manual | video }] [-f filters]"
+	echo -e "Usage: $0 [-h] [-t] [-a] [-q] [-n] [-x threads] [-s file_size_limit] [-c { auto | manual | video }] [-f filters]"
 	echo -e "\\t\\t[-u undershoot_limit] [-i iterations] [-g height_threshold] [-b bpp_threshold] [-m HQ_min_audio_bitrate]"
 	
 	echo -e "\\nMain options:\\n"
@@ -51,7 +55,7 @@ usage() {
 	echo -e "\\t-a: Enable audio encoding."
 	echo -e "\\t-q: Enable HQ (high quality) mode. Higher bpp threshold, higher min. audio bitrate and 2-pass encoding."
 	echo -e "\\t-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis."
-	echo -e "\\t-x cores: Fast encoding mode (experimental). For 100% CPU usage specify your CPU's number of cores."
+	echo -e "\\t-x cores: Fast encoding mode (experimental). For 100% CPU usage specify your CPU's number of threads."
 	echo -e "\\t-s file_size_limit: Specify the file size limit in MB. Default value is 3."
 	echo -e "\\t\\t4chan limits:"
 	echo -e "\\t\\t\\t/gif/ and /wsg/: 4MB - audio allowed - max. 300 seconds"
@@ -86,6 +90,42 @@ contains() {
 	esac
 }
 
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+# Prompt user to specify whether to use audio filters
+# More infos in multiConvert
+multiAfPrompt() {
+	# Only necessary under very specific circumstances
+	# a) Audio gets encoded
+	# b) Fast encoding mode gets used
+	# c) User has specified additional filters (possibility of audio filters)
+	if [[ "$parallel_convert" = true && -n $filter_settings && "$audio_mode" = true ]]; then
+		PS3="Assume audio filters? "
+		options=("Yes" "No")
+		
+		echo "~~~~~~~~~~~~~~~~~~"
+		echo "ATTENTION!"
+		echo "Please specify if your filter string contains audio filters."
+		echo "Choosing 1 (Yes) will lead to audio filters getting applied. This may take some time for long videos."
+		echo "Choosing 2 (No) will lead to no audio filters getting applied. This will speed up the conversion."
+		echo "~~~~~~~~~~~~~~~~~~"
+		
+		# Force the user to either answer 'Yes' or 'No'
+		select opt in "${options[@]}"
+		do
+			case "$opt" in
+				"Yes")
+					parallel_afilter=true
+					break;;
+				"No")
+					parallel_afilter=false
+					break;;
+				*) echo "Please choose either 1 (Yes) or 2 (No).";;
+			esac
+		done
+	fi
+}
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -199,11 +239,15 @@ audioTest() {
 # Get start/end time for trimming
 trim() {
 	# Prompt user to specify start/end time (in seconds)
+	echo "~~~~~~~~~~~~~~~~~~"
 	echo "Current file: $input"
+	echo "~~~~~~~~~~~~~~~~~~"
 	echo "Please specify where to start encoding (in seconds). Leave empty to start at the beginning of the input video."
 	read -r start_time
+	echo "~~~~~~~~~~~~~~~~~~"
 	echo "Now please specify where to stop encoding (in seconds). Leave empty to stop at the end of the input video."
 	read -r end_time
+	echo "~~~~~~~~~~~~~~~~~~"
 	
 	# If no input, set start time to 0 and/or end time to video length
 	[[ -z $start_time ]] && start_time=0
@@ -305,11 +349,11 @@ downscale() {
 	while (( $(bc <<< "$new_bpp < $bpp_threshold") && new_video_height > height_threshold*2 )); do
 		(( new_video_height -= 10 ))
 		new_bpp=$(bc <<< "scale=3; $1*1000/($new_video_height*$new_video_height*$aspect_ratio*$new_frame_rate)")
-		scaling_factor="scale=-1:$new_video_height"
+		scaling_factor="scale=-2:$new_video_height"
 	done
 	
 	# Reduce frame rate if bpp >= bpp threshold
-	framedrop
+	if [[ "$showcase" = false ]]; then framedrop; fi
 	
 	# New bpp calculation 
 	# Avoids unnecessary cycle in the following while loop
@@ -320,7 +364,7 @@ downscale() {
 	while (( $(bc <<< "$new_bpp < $bpp_threshold") && new_video_height > height_threshold )); do
 		(( new_video_height -= 10 ))
 		new_bpp=$(bc <<< "scale=3; $1*1000/($new_video_height*$new_video_height*$aspect_ratio*$new_frame_rate)")
-		scaling_factor="scale=-1:$new_video_height"
+		scaling_factor="scale=-2:$new_video_height"
 	done
 }
 
@@ -445,11 +489,11 @@ input() {
 	if [[ -n "$showcase_mode" && "$showcase_mode" != "video" ]]; then
 		if [[ "$animated_gif" = true ]]; then 
 			# -ignore_loop 0 since ffmpeg disables infinite looping gifs by default
-			input_config=(-ignore_loop 0 -i "$picture_path" -ss "$start_time" \
+			input_config=(-ignore_loop 0 -ss "$start_time" -i "$picture_path" \
 					-i "$input" -map 0:0 -map 1:a:0)
 		else
 			# -loop 1 to infinitely loop the input picture to the input audio
-			input_config=(-loop 1 -i "$picture_path" -ss "$start_time" \
+			input_config=(-loop 1 -ss "$start_time" -i "$picture_path" \
 					-i "$input" -map 0:0 -map 1:a:0 -t "$duration")
 		fi
 	else
@@ -488,21 +532,27 @@ multiInput() {
 
 # Print calculated/chosen values during debug mode
 debug() {
-	echo -e "\\n\\n"
-	echo "Audio factor: $audio_factor"
-	echo "Iteration: $i"
-	echo "First try: $first_try"
-	echo "Best try: $best_try"
-	echo "Best try bitrate: $best_try_bitrate"
-	echo "Video settings: $video_settings"
-	echo "Mode counter: $mode_counter"
-	echo "Attempt: $attempt"
-	echo "Video bitrate: $video_bitrate"
-	echo "Video height: $new_video_height"
-	echo "Bpp: $new_bpp"
-	echo "Filters: $filter"
-	echo "User scale: $user_scale"
-	echo -e "\\n\\n"
+	echo "~~~~~~~~~~~~~~~~~~"
+	echo ffmpeg [...] $frame_settings $video_settings \
+					-tune ssim -slices 8 -threads 1 -metadata title=[...] -auto-alt-ref 1 \
+					-lag-in-frames 25 -arnr-maxframes 15 -arnr-strength 3 -deadline good \
+					-cpu-used 0 $filter $audio_settings -pass 2 "../done/${input%.*}.webm"
+	echo "~~~~~~~~~~~~~~~~~~"
+	echo "$frame_settings"
+	#echo "Audio factor: $audio_factor"
+	#echo "Iteration: $i"
+	#echo "First try: $first_try"
+	#echo "Best try: $best_try"
+	#echo "Best try bitrate: $best_try_bitrate"
+	#echo "Video settings: $video_settings"
+	#echo "Mode counter: $mode_counter"
+	#echo "Attempt: $attempt"
+	#echo "Video bitrate: $video_bitrate"
+	#echo "Video height: $new_video_height"
+	#echo "Bpp: $new_bpp"
+	#echo "Filters: $filter"
+	#echo "User scale: $user_scale"
+	echo "~~~~~~~~~~~~~~~~~~"
 }
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -614,7 +664,7 @@ multiConvert() {
 				ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings $video_settings \
 					-tune ssim -slices 8 -threads 1 -auto-alt-ref 1 \
 					-lag-in-frames 25 -arnr-maxframes 15 -arnr-strength 3 -deadline good \
-					-cpu-used 0 $filter $audio_settings -pass 2 "${j}.webm"
+					-cpu-used 0 $filter -an -pass 2 "${j}.webm"
 					
 			else
 				# Single pass encoding used during normal mode
@@ -622,23 +672,58 @@ multiConvert() {
 			
 				ffmpeg -y -hide_banner "${input_config[@]}" $frame_settings $video_settings \
 					-tune ssim -slices 8 -threads 1 -deadline good \
-					-cpu-used 0 $filter $audio_settings "${j}.webm"
+					-cpu-used 0 $filter -an "${j}.webm"
 			fi
 			
 			cd ../..
 		} &
 		done
 		
+		# Wait for all parallel encodes to finish
 		wait
 		
+		# Create input list for concatenating
 		for (( j=0; j<parallel_process; j++ ))
 		do
 			echo "file 'temp/${j}/${j}.webm'" >> list.txt
 		done
 		
-		ffmpeg -y -hide_banner -f concat -i list.txt -c copy \
-					-metadata title="${input%.*}" "../done/${input%.*}.webm"
-					
+		# Concatenate video stream
+		ffmpeg -y -hide_banner -f concat -i list.txt -c copy temp/temp.webm
+		
+		# Audio encoders are less accurate during splitting
+		# Audible cuts and a wrong duration are the result
+		# Therefore separate continuous audio encoding
+		if [[ "$audio_mode" = true || "$showcase" = true ]]; then
+			# Make separate directory for audio file
+			# Prevents filename conflicts (even though it'd be very unlikely) 
+			mkdir audio
+
+			input		
+			if [[ "$parallel_afilter" = true ]]; then
+				# ffmpeg falls back on the default video encoder, even if -vn is set
+				# Video filters in $filter are the reason
+				# -deadline good -cpu-used 5 -r 1 to speed up the process
+				# Will take much longer, but only happens if user confirms using audio filters
+				[[ -e audio/temp.ogg ]] || ffmpeg -y -hide_banner "${input_config[@]}" \
+					-r 1 $filter $audio_settings audio/temp.ogg
+			else
+				# Only encodes the audio
+				# Fast, but no audio filters will get applied
+				[[ -e audio/temp.ogg ]] || ffmpeg -y -hide_banner "${input_config[@]}" \
+					-vn $audio_settings audio/temp.ogg
+			fi		
+			
+			# Combine video and audio stream into one webm
+			ffmpeg -y -hide_banner -i temp/temp.webm -i audio/temp.ogg -t "$duration" -map 0:v -map 1:a \
+					-metadata title="${input%.*}" -c copy "../done/${input%.*}.webm"
+		else
+			ffmpeg -y -hide_banner -i temp/temp.webm -map 0:v \
+					-metadata title="${input%.*}" -c copy "../done/${input%.*}.webm"
+		fi
+				
+		# Remove input list an video parts
+		# Keeps audio (if used) until the file is finished	
 		rm -rf list.txt temp/
 	fi
 }
@@ -661,7 +746,7 @@ showcaseSettings() {
 	
 	# Increase keyframe interval
 	# Main/only way to decrease file size during audio showcase mode
-	keyframe_interval=$(( 20 * $1 ))
+	(( keyframe_interval = 10 * $1 ))
 	
 	# If an animated gif is used, treat it as a normal video
 	# Choose new audio bitrate (likely to be less than with audio showcase mode)
@@ -685,7 +770,7 @@ initialEncode() {
 	
 	if [[ "$user_scale" = false ]]; then 
 		downscale "$video_bitrate"
-	else
+	elif [[ "$showcase" = false ]]; then
 		framedrop "$video_bitrate"
 	fi
 	
@@ -760,7 +845,7 @@ enhance() {
 					"$user_scale" = false ]]; then
 			
 			downscale "$new_video_bitrate"
-		else 
+		elif [[ "$showcase" = false ]]; then
 			framedrop "$new_video_bitrate"
 		fi
 		
@@ -819,7 +904,7 @@ limit() {
 		# Re-apply downscale for reduced bitrate
 		if [[ $new_video_bitrate -lt $last_video_bitrate && "$user_scale" = false ]]; then
 			downscale "$new_video_bitrate"
-		else
+		elif [[ "$showcase" = false ]]; then
 			framedrop "$new_video_bitrate"
 		fi
 		
@@ -947,16 +1032,17 @@ fi
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Animated gifs are prone to throw errors when split
-# Reverts to normal convert for all gifs
 # Static gifs should work, but there's currently no check
-if [[ "$animated_gif" = true || "${input##*.}" = "gif" ]]; then
+# Reverts to normal convert for all gifs and audio showcase mode 
+if [[ "$animated_gif" = true || "${input##*.}" = "gif" || "$showcase" = true ]]; then
 	parallel_process=1
 fi
 
 # Revert back to normal convert if <= 1 thread is specified
-if (( parallel_process <= 1 )); then
-	parallel_convert=false
-fi
+if (( parallel_process <= 1 )); then parallel_convert=false; fi
+
+# Prompt user to decide whether or not to assume audio filters
+if [[ "$ask_parallel_afilter" = true ]]; then multiAfPrompt; fi
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1021,6 +1107,9 @@ for input in *; do (
 	if [[ "$showcase" = true ]]; then showcaseAdjuster; else adjuster; fi
 	# Only remove 2-pass encoding log if file is finished
 	rm ffmpeg2pass-0.log 2> /dev/null
+	# Only remove separate audio encoding during fast encoding mode
+	# if the file is finished
+	rm -rf audio 2> /dev/null
 	# Reset special gif treatment during audio showcase mode 
 	if [[ "$animated_gif" = true ]]; then animated_gif=false && showcase=true; fi
 ); done

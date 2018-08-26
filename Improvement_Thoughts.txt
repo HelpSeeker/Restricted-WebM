@@ -20,18 +20,16 @@
 	This is always the case for VP8 as it only supports the BT.601 color matrix and also happens with VP9, if the produced webm isn't HD as well. 
 	The filter colormatrix=bt709:bt601 solves this problem.
 	Still trying to figure out how to detect the input color matrix reliable via ffprobe. At least I'm going to add a warning to the wiki.
-
--) Options creep
-
-	I think it's necessary to provide options to temporarily override the most important constants of the script.
-	At the same time this make the help text and commands more complicated and after all I wanted to make a script with minimal user input.
-	Perhaps I'm going to add an advanced option menu with select+case.
 	
 -) File size adjustment during audio showcase mode
 
 	Currently the video option is prone to result in too large files, if the input video stream isn't a static picture.
 	The resulting slideshow doesn't get affected that much by increasing the keyframe interval.
 	Further downscaling would solve this problem. Not sure if I'm only gonna do it for the video option or auto/manual as well.
+	
+	After further thought: Is it really necessary?
+	The audio showcase mode is supposed to create webms with a static image as video, not a slideshow.
+	Using '-c video' on normal video footage isn't the way it's supposed to be used and the only time further downscaling would be needed.
 
 -) Quality fluctuations during fast encoding mode
 
@@ -40,3 +38,10 @@
 	Could it be that CQ produces a better quality at high bitrates than VBR? I compared them thoroughly with difficult encodes 
 	(720p/1080p footage, often more than a minute long with a 4MB limit), but not with easy ones. I should definitely do this as well.
 	If it's true, then I'll switch back from VBR to CQ.
+
+-) Getting more familiar with VP9
+
+	Never had the hardware to encode VP9 at a reasonable speed. Now that I do it's time to look more into it.
+	What I already noticed is that single pass VP9 at low bitrates (<200Kbps) is actually worse than single pass VP8.
+	Some frames look way better, but especially parts with fast movement look awful. Really, really awful.
+	Kinda reminds me of the constant quality vs. VBR situation.

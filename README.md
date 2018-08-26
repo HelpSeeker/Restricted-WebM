@@ -4,7 +4,7 @@ A bash script to create webms within a certain file size limit (mainly targeted 
 The goal is to produce webms that fit within a specified size limit, while producing the maximum possible quality and requiring minimum user input. If you want fast encoding speed, then this script isn't for you.  
 
 ```
-Usage: convert.sh [-h] [-t] [-a] [-q] [-n] [-x cores] [-s file_size_limit] [-c { auto | manual | video }] [-f filters] 
+Usage: convert.sh [-h] [-t] [-a] [-q] [-n] [-x threads] [-s file_size_limit] [-c { auto | manual | video }] [-f filters] 
 		    [-u undershoot_limit] [-i iterations] [-g height_threshold] [-b bpp_threshold] [-m HQ_min_audio_bitrate]
 	
 Main options:
@@ -14,7 +14,7 @@ Main options:
 	-a: Enable audio encoding.
 	-q: Enable HQ (high quality) mode. Higher bpp threshold, higher min. audio bitrate and 2-pass encoding.
 	-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis.
-	-x cores: Fast encoding mode (experimental). For 100% CPU usage specify your CPU's number of cores.
+	-x cores: Fast encoding mode (experimental). For 100% CPU usage specify your CPU's number of threads.
 	-s file_size_limit: Specify the file size limit in MB. Default value is 3.
 	    4chan limits:
 	        /gif/ and /wsg/: 4MB - audio allowed - max. 300 seconds
