@@ -14,16 +14,12 @@
 # 	Establish basic conversion functionality for ONE input file
 
 # TO-DO
-# -) VP9 / Opus support
-# -) Vorbis fallback for Opus, when dealing with surround sound
+# -) VP9
 # -) Improve libvpx commands
 # -) Multithreading
 # -) Include filename in the metadata
-# -) Option to disable filters during first pass
 # -) Video stream copying
-# -) Option to force audio/video trans-/reencoding
-# -) Option to force stereo audio
-# -) Option to force classic 1 video + 1 audio stream
+# -) Throw error if the entire audio already exceeds the size limit
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -37,14 +33,20 @@ audio_bitrate=0
 audio_settings="-an"
 sub_settings="-sn"
 filter_settings=""
-min_astream_bitrate=64
+min_achannel_bitrate=32
+max_achannel_bitrate=96
 astream_count=1
+a_encoder="libvorbis"
 
 # Default behaviour
 use_trim=false
 use_audio=false
 use_subs=false
 mkv_fallback=false
+no_filter_firstpass=false
+force_stereo=false
+no_stream_copy=false
+basic_format=false
 
 # Initializing variables (don't touch)
 file_list=()
@@ -56,6 +58,7 @@ vcodec_list=("VP8")
 # Error types
 image_subs=false
 wrong_trim=false
+missing_input=false
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Functions
@@ -73,12 +76,18 @@ show_help() {
 	echo -e " -a, --audio\t\tuse input audio (if present)"
 	echo -e " -s, --size <limit>\tspecify file size limit in MiB (default: 3)"
 	echo -e " -f, --filter <string>\tpass custom ffmpeg filters"
-	echo -e " -p, --passes <1|2>\tforce single / two-pass encoding (default: 2)"
-	echo -e " --start <time>\t\tspecify start time for all input videos in sec."
-	echo -e " --end <time>\t\tspecify end time for all input videos in sec."
+	echo -e " -p, --passes <1|2>\tforce single/two-pass encoding (default: 2)"
+	echo -e " -ss, --start <time>\tspecify start time for all input videos in sec."
+	echo -e " -to, --end <time>\tspecify end time for all input videos in sec."
+	echo -e " -fs, --force-stereo\tforce stereo audio output"
+	echo -e " -bf, --basic-format\tlimit the output to max. one video/audio stream"
+	echo -e " --opus\t\t\tuse and allow Opus as audio codec"
 	echo -e " --subtitles\t\tuse input subtitles (if present)"
-	echo -e " --min-audio <bitrate>\tspecify min. audio bitrate in Kbps (default: 64)"
+	echo -e " --min-audio <bitrate>\tforce min. audio channel bitrate in Kbps (default: 32)"
+	echo -e " --max-audio <bitrate>\tforce max. audio channel bitrate in Kbps (default: 96)"
 	echo -e " --mkv-fallback\t\tallow usage of MKV for image-based subtitles"
+	echo -e " --no-filter-firstpass\tdisable filters during the first pass"
+	echo -e " --no-copy\t\tdisable stream copying"
 	echo -e ""
 }
 
@@ -113,6 +122,7 @@ get_audio_info() {
 			break;
 		fi
 	done
+	if [[ $basic_format = true ]]; then astream_count=1; fi
 }
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -121,7 +131,7 @@ get_audio_info() {
 get_sub_info() {
 	# Throw error if subtitles can't be converted to webvtt (i.e. they're image-based)
 	mkdir webm_temp 2> /dev/null
-	ffmpeg -loglevel quiet -i "$input" -map 0:s? -c:s webvtt "webm_temp/sub.webm" || image_subs=true
+	ffmpeg -loglevel quiet -i "$input" -t 1 -map 0:s? -c:s webvtt "webm_temp/sub.webm" || image_subs=true
 	rm -r webm_temp
 }
 
@@ -131,9 +141,9 @@ get_filter_info() {
 	mkdir webm_temp 2> /dev/null
 
 	ffmpeg -loglevel panic -i "$input" -t 1 -map 0:v -c:v copy \
-		-filter_complex "$user_filter" "webm_test/video.mkv" || vfilters=true
+		-filter_complex "$user_filter" "webm_temp/video.mkv" || vfilters=true
 	ffmpeg -loglevel panic -i "$input" -t 1 -map 0:a? -c:a copy \
-		-filter_complex "$user_filter" "webm_test/audio.mkv" || afilters=true
+		-filter_complex "$user_filter" "webm_temp/audio.mkv" || afilters=true
 		
 	rm -r webm_temp
 }
@@ -190,7 +200,9 @@ get_input_settings() {
 # Adjust map settings
 get_map_settings() {
 	map_settings="-map 0:v"
-	if [[ $use_audio = true ]]; then
+	if [[ $use_audio = true && $basic_format = true ]]; then
+		map_settings="${map_settings} -map 0:a:0?"
+	elif [[ $use_audio = true ]]; then
 		map_settings="${map_settings} -map 0:a?"
 	fi
 	if [[ $use_subs = true ]]; then
@@ -225,6 +237,7 @@ get_audio_settings() {
 			-of default=noprint_wrappers=1:nokey=1 "$input")
 		in_audio_codec=$(ffprobe -v error -select_streams a:$i \
 			-show_entries stream=codec_long_name -of default=noprint_wrappers=1:nokey=1 "$input")
+		opus_fail=false
 		
 		# Test for accepted audio codecs
 		same_acodec=false			
@@ -232,6 +245,16 @@ get_audio_settings() {
 		do
 			contains "$in_audio_codec" "$acodec" && same_acodec=true
 		done
+		
+		if [[ $force_stereo = true && $channels -gt 2 ]]; then 
+			# to ensure to disable stream copying
+			same_acodec=false
+			channels=2
+		fi
+		
+		if [[ $a_encoder = "libopus" && $channels -gt 2 ]]; then
+			ffmpeg -loglevel quiet -i "$input" -t 1 -map 0:a:$i -c:a:$i libopus "webm_temp/opus.webm" || opus_fail=true
+		fi
 		
 		# Set audio bitrate
 		audio_factor=$(bc <<< "$size_limit*8*1000/($out_duration*5.5*32)")
@@ -250,12 +273,14 @@ get_audio_settings() {
 		fi
 		
 		# Ensure that HQ mode gets a higher minimum audio bitrate
-		if (( astream_bitrate < min_astream_bitrate )); then 
-			astream_bitrate=$min_astream_bitrate
+		if (( astream_bitrate < min_achannel_bitrate * channels )); then 
+			(( astream_bitrate = min_achannel_bitrate * channels ))
+		elif (( astream_bitrate > max_achannel_bitrate * channels )); then 
+			(( astream_bitrate = max_achannel_bitrate * channels ))
 		fi
 	
 		# Decide between stream copying and trans-/reencoding
-		if [[ $same_acodec = true && $afilters = false && $use_trim = false && -z $start_time_all ]]; then
+		if [[ $no_stream_copy = false && $same_acodec = true && $afilters = false && $use_trim = false && -z $start_time_all ]]; then
 			ffmpeg -loglevel quiet -i "$input" -map 0:a:$i -c:a copy "webm_temp/audio.webm"
 			in_astream_bitrate=$(bc <<< "$(ffprobe -v error -show_entries format=bit_rate \
 					-of default=noprint_wrappers=1:nokey=1 "webm_temp/audio.webm")/1000")
@@ -263,17 +288,27 @@ get_audio_settings() {
 			if (( in_astream_bitrate <= astream_bitrate )); then
 				audio_settings="${audio_settings} -c:a:$i copy"
 				(( audio_bitrate += in_astream_bitrate ))
-			else
+			elif [[ $opus_fail = true ]]; then
 				audio_settings="${audio_settings} -c:a:$i libvorbis -b:a:$i ${astream_bitrate}K"
 				(( audio_bitrate += astream_bitrate ))
+			else
+				audio_settings="${audio_settings} -c:a:$i $a_encoder -b:a:$i ${astream_bitrate}K"
+				(( audio_bitrate += astream_bitrate ))
 			fi
-		else
+		elif [[ $opus_fail = true ]]; then
 			audio_settings="${audio_settings} -c:a:$i libvorbis -b:a:$i ${astream_bitrate}K"
+			(( audio_bitrate += astream_bitrate ))
+		else
+			audio_settings="${audio_settings} -c:a:$i $a_encoder -b:a:$i ${astream_bitrate}K"
 			(( audio_bitrate += astream_bitrate ))
 		fi
 		
 		rm -r webm_temp
 	done
+	
+	if [[ $force_stereo = true ]]; then
+		audio_settings="${audio_settings} -ac 2"
+	fi
 }
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -304,9 +339,11 @@ convert() {
 	for (( i=passes; i>=1; i-- ))
 	do
 		if (( i == 2 )); then
+			if [[ $no_filter_firstpass = true ]]; then filter_settings=""; fi 
 			echo "First pass:"
 			pass_settings=("-cpu-used" "5" "-pass" "1" "-f" "null" "-")
 		elif (( i == 1 && passes == 2 )); then
+			if [[ $no_filter_firstpass = true ]]; then get_filter_settings; fi 
 			echo "Second pass:"
 			pass_settings=("-cpu-used" "0" "-pass" "2" "webm_temp/${input%.*}.$ext")
 		else
@@ -327,7 +364,7 @@ convert() {
 
 # Conversion if the input is a video
 video_conversion() {
-	if [[ ! -e "$input" ]]; then echo "No file $input found. Skipping..."; return; fi
+	if [[ ! -e "$input" ]]; then missing_input=true; echo "No file $input found. Skipping..."; return; fi
 	get_video_info
 	get_input_settings
 	get_map_settings
@@ -361,7 +398,14 @@ document_errors() {
 		echo -e "\tPossible causes:"
 		echo -e "\t a) Start or end time less than zero"
 		echo -e "\t b) Start or end time greater than the input duration"
-		echo -e "\t c) Start time greater than end time"
+		echo -e "\t c) Start time greater than end time\n"
+		} >> webm.log
+	fi
+	
+	if [[ $missing_input = true ]]; then
+		{
+		echo -e "Error occured for:\n$input"
+		echo -e "\n\tFile not found.\n"
 		} >> webm.log
 	fi
 	
@@ -381,13 +425,19 @@ do
 	-t | --trim) use_trim=true; shift;;
 	-a | --audio) use_audio=true; shift;;
 	-s | --size) size_limit=$2; shift 2;;
-	-f | --filter) user_filter=$2; shift 2;;
+	-f | --filter) user_filter="$2"; shift 2;;
 	-p | --passes) passes=$2; shift 2;;
-	--start) start_time_all=$2; shift 2;;
-	--end) end_time_all=$2; shift 2;;
+	-ss | --start) start_time_all=$2; shift 2;;
+	-to | --end) end_time_all=$2; shift 2;;
+	-fs | --force-stereo) force_stereo=true; shift;;
+	-bf | --basic-format) basic_format=true; shift;;
+	--opus) acodec_list+=("Opus"); a_encoder="libopus"; shift;;
 	--subtitles) use_subs=true; shift;;
-	--min-audio) min_audio_bitrate=$2; shift 2;;
+	--min-audio) min_achannel_bitrate=$2; shift 2;;
+	--max-audio) max_achannel_bitrate=$2; shift 2;;
 	--mkv-fallback) mkv_fallback=true; shift;;
+	--no-filter-firstpass) no_filter_firstpass=true; shift;;
+	--no-copy) no_stream_copy=true; shift;;
 	-*) echo "Unknown flag '${1}' used!"; exit;;
 	*) file_list+=("$1"); shift;; 
 	esac
@@ -417,6 +467,13 @@ fi
 
 if (( passes != 1 && passes != 2 )); then
 	echo "-p/--passes can only be 1 (single pass) or 2 (two-pass). Aborting..."
+	exit
+fi
+
+if [[ -z "$user_filter" ]]; then no_filter_firstpass=false; fi	
+
+if (( max_achannel_bitrate < 24 )); then
+	echo "Max. audio channel bitrate is too low for Vorbis. Aborting..."
 	exit
 fi
 
