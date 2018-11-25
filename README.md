@@ -67,3 +67,19 @@ Restricted-Webm/
 
 
 For further information consult the [wiki](https://github.com/HelpSeeker/Restricted-Webm/wiki)!
+
+## Rewrite
+
+I'm currently working on rewriting this script from scratch. 
+
+convert.sh was the first extensive script I've ever written and it's far from being perfect. A patchwork job that got bigger and bigger over time.  
+It is lacking in several areas
+
+* no subtitle handling
+* no multiple audio stream handling
+* expects stereo audio
+* several problems regarding filters
+* relatively messy code
+
+I've learned a lot since I first made this repo (be it ffmpeg usage, VP8/VP9/Vorbis/Opus details or Bash scripting) and think it's better to start over than to continue working on already ugly code.  
+However there will be another change regarding the rewrite. I'm planning on migrating this script to Python. It certainly is possible to do in Bash, but Python will be easier in the long run and make it available for more people.
