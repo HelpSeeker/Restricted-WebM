@@ -98,9 +98,9 @@ Video:
 - [x] Adjust bitrate i times for each bitrate mode
 - [x] Option to change amount of iterations per bitrate mode
 - [x] Adjust bitrate i * 2 times to reach undershoot limit
-- [ ] Avoid unnecessary encoding attempts while trying to reach undershoot limit
-- [ ] Automatic frame rate dropping
-- [ ] Custom target bpp value
+- [x] Avoid unnecessary encoding attempts while trying to reach undershoot limit
+- [x] Automatic frame rate dropping
+- [x] Custom target bpp value
 - [ ] Support for transparency
 - [ ] VP9 support (low priority)
 - [ ] AV1 support (very low priority)
@@ -127,8 +127,8 @@ Filters:
 - [x] New approach to user filters (filtered input gets piped to the actual WebM conversion commands)
 - [x] Script now knows if audio and/or video filters are being used
 - [x] Only audio filters are now possible
-- [ ] Automatic downscaling
-- [ ] Custom min/max downscaling
+- [x] Automatic downscaling
+- [x] Custom min/max downscaling
 - [ ] Automatic colormatrix correction
 
 Misc:
