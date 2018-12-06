@@ -82,4 +82,60 @@ It is lacking in several areas
 * relatively messy code
 
 I've learned a lot since I first made this repo (be it ffmpeg usage, VP8/VP9/Vorbis/Opus details or Bash scripting) and think it's better to start over than to continue working on already ugly code.  
-However there will be another change regarding the rewrite. I'm planning on migrating this script to Python. It certainly is possible to do in Bash, but Python will be easier in the long run and make it available for more people.
+However there will be another change regarding the rewrite. I'm planning on migrating this script to Python. It certainly is possible to do in Bash, but Python will be easier in the long run and make it available to more people.
+
+Current progress:
+
+Input:
+- [x] Accept several input files
+- [x] No required directory structure
+- [x] Option to trim each input individually
+- [x] Option to trim all input with the same start and/or end time
+
+Video:
+- [x] Choose bitrate based on file size limit, length, audio bitrate and prior attempts
+- [x] Loop through VBR with qmax, VBR without qmax and CBR
+- [x] Adjust bitrate i times for each bitrate mode
+- [x] Option to change amount of iterations per bitrate mode
+- [x] Adjust bitrate i * 2 times to reach undershoot limit
+- [ ] Avoid unnecessary encoding attempts while trying to reach undershoot limit
+- [ ] Automatic frame rate dropping
+- [ ] Custom target bpp value
+- [ ] Support for transparency
+- [ ] VP9 support (low priority)
+- [ ] AV1 support (very low priority)
+
+Audio:
+- [x] Choose audio bitrate based on file size limit, length and channel count of all audio streams
+- [x] Handle multiple audio streams
+- [x] Handle different audio channel configurations
+- [x] Option to force stereo audio
+- [x] Options to force min/max audio channel bitrate
+- [x] Stream copying (if viable)
+- [x] Option to force/disable stream copying
+- [x] Vorbis and Opus support
+- [x] Vorbis as fallback codec, if Opus can't remap channel configuration
+- [ ] Extend range of possible audio bitrates (down to narrowband 8Kbps)
+
+Subtitiles:
+- [x] Subtitle support
+- [x] Option to use MKV container when image-based subtitles are used
+
+Filters:
+- [x] Options to pass custom filters
+- [x] Option to disable filters during the first pass when using 2-pass encoding
+- [x] New approach to user filters (filtered input gets piped to the actual WebM conversion commands)
+- [x] Script now knows if audio and/or video filters are being used
+- [x] Only audio filters are now possible
+- [ ] Automatic downscaling
+- [ ] Custom min/max downscaling
+- [ ] Automatic colormatrix correction
+
+Misc:
+- [x] Custom target file size
+- [x] Custom undershoot limit
+- [x] Option to choose between single and 2-pass encoding
+- [x] Error logs
+- [x] Option to force 1 video/audio stream output (discards any other input audio streams)
+- [ ] Makeshift multi-threading (low priority)
+- [ ] Audio showcase mode (very low priority)
