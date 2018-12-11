@@ -329,8 +329,7 @@ get_filter_settings() {
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# ffmpeg commands
-convert() {
+convert_video() {
 	mkdir webm_done 2> /dev/null
 	mkdir webm_temp 2> /dev/null
 	
@@ -351,8 +350,9 @@ convert() {
 			pass_settings=("-cpu-used" "0" "webm_temp/${input%.*}.$ext")
 		fi
 		
-		ffmpeg -loglevel quiet -stats "${input_settings[@]}" $map_settings $video_settings \
-			$audio_settings $sub_settings $filter_settings "${pass_settings[@]}"
+		ffmpeg -loglevel panic "${input_settings[@]}" $map_settings \
+			-c:a pcm_s16le -c:v rawvideo -c:s copy $filter_settings -f nut - | \
+		ffmpeg -loglevel quiet -stats -i - $video_settings $audio_settings $sub_settings "${pass_settings[@]}"
 		echo "~~~~~~~~~~~~~~~~~~"
 	done
 	
@@ -375,7 +375,7 @@ video_conversion() {
 	
 	if [[ $image_subs = true && $mkv_fallback = false ]]; then return; 
 	elif [[ $wrong_trim = true ]]; then return; fi
-	convert
+	convert_video
 	echo "Final size: $(bc <<< "scale=2; $(stat -c %s "webm_done/${input%.*}.$ext")/1024/1024") MiB"
 }
 
@@ -454,6 +454,8 @@ do
 	esac
 done
 
+# Check start/end time validity
+# Individual trim settings get checked in get_input_settings
 if (( start_time_all < 0 )); then
 	echo "--start can't be less than zero. Aborting..."
 	exit
@@ -465,6 +467,7 @@ elif [[ $use_trim = true && ( -n $start_time_all || -n $end_time_all ) ]]; then
 	exit
 fi
 
+# Make sure only 1 and 2 passes are accepted as input
 if (( passes != 1 && passes != 2 )); then
 	echo "-p/--passes can only be 1 (single pass) or 2 (two-pass). Aborting..."
 	exit
@@ -472,6 +475,8 @@ fi
 
 if [[ -z "$user_filter" ]]; then no_filter_firstpass=false; fi	
 
+# Vorbis doesn't support lower bitrate
+# Needs additional test for Opus (as it can go lower)
 if (( max_achannel_bitrate < 24 )); then
 	echo "Max. audio channel bitrate is too low for Vorbis. Aborting..."
 	exit
@@ -479,6 +484,7 @@ fi
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+# Main conversion loop
 for input in "${file_list[@]}"
 do
 	echo "~~~~~~~~~~~~~~~~~~"
