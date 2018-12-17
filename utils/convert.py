@@ -195,7 +195,11 @@ def limiter(args, in_file, raw, webm):
     """
     out_path = in_file.i_prop.out_path
 
-    for mode in range(0, 3):
+    start_mode = 0
+    if args.no_qmax:
+        start_mode = 1
+
+    for mode in range(start_mode, 3):
         bitrate_list = []
         size_list = []
 

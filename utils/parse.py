@@ -49,10 +49,10 @@ def parsed_args():
                         help="use and allow Opus as audio codec")
     parser.add_argument("--subtitles", action="store_true", \
                         help="use input subtitles (if present)")
-    parser.add_argument("--min-audio", type=int, default=24, \
-                        help="force min. audio channel bitrate (default: 24)")
-    parser.add_argument("--max-audio", type=int, default=96, \
-                        help="force max. audio channel bitrate (default: 96)")
+    parser.add_argument("--min-audio", type=int, default=6, \
+                        help="force min. audio channel bitrate (default: 6)")
+    parser.add_argument("--max-audio", type=int, default=9999, \
+                        help="force max. audio channel bitrate")
     parser.add_argument("--mkv-fallback", action="store_true", \
                         help="allow usage of MKV for image-based subtitles")
     parser.add_argument("--no-filter-firstpass", action="store_true", \
@@ -61,6 +61,10 @@ def parsed_args():
                         help="disable stream copying")
     parser.add_argument("--force-copy", action="store_true", \
                         help="force-copy compatible audio (!) streams")
+    parser.add_argument("--no-qmax", action="store_true", \
+                        help="skip the first bitrate mode (VBR with qmax)")
+    parser.add_argument("--audio-factor", type=float, default=5.5, \
+                        help="factor used to choose audio bitrate (default: 5.5)")
     parser.add_argument("--debug", action="store_true", \
                         help="only print ffmpeg commands")
 

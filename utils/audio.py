@@ -38,21 +38,47 @@ def channel_bitrate(args, in_file):
         if args.basic_format:
             break
 
+    """
     # Original formula (aimed at 1 stereo audio stream)
     # factor = args.size*8*1000/(in_file.out_duration*5.5*32)
-    factor = args.size*8*1000 / (out_dur*channels*2.75*32)
-
     # Numbers are based on personal experience with 4MB WebMs
     # Aimed at music, not speech
     if factor < 1:
-        bitrate = 24
-    elif factor < 2:
-        bitrate = 32
-    elif factor < 7:
         bitrate = 48
-    elif factor < 14:
+    elif factor < 2:
         bitrate = 64
+    elif factor < 7:
+        bitrate = 96
+    elif factor < 14:
+        bitrate = 128
     elif factor < 30:
+        bitrate = 160
+    else:
+        bitrate = 192
+    """
+
+    # Template for extended formula
+    # Still needs compensation to draw out 64/96/128Kbps more
+    # Also only intended for Vorbis, Opus should be adjusted
+    factor = args.size*8*1000 / (out_dur*args.audio_factor*channels*4)
+
+    if factor < 1:
+        bitrate = 6
+    elif factor < 2:
+        bitrate = 8
+    elif factor < 3:
+        bitrate = 12
+    elif factor < 4:
+        bitrate = 16
+    elif factor < 6:
+        bitrate = 24
+    elif factor < 8:
+        bitrate = 32
+    elif factor < 28:
+        bitrate = 48
+    elif factor < 72:
+        bitrate = 64
+    elif factor < 120:
         bitrate = 80
     else:
         bitrate = 96
@@ -172,7 +198,17 @@ def audio_settings(args, in_file):
             settings.extend([encoder_selection, encoder,
                              bitrate_selection, str(bitrate) + "K"])
 
+    # Both -ac and -ar don't conflict with -c:a copy
+    # ffmpeg ignores them in that case
     if args.force_stereo:
         settings.extend(["-ac", "2"])
+
+    c_bitrate = channel_bitrate(args, in_file)
+    if c_bitrate <= 6:
+        settings.extend(["-ar", "8000"])
+    elif c_bitrate <= 12:
+        settings.extend(["-ar", "12000"])
+    elif c_bitrate <= 16:
+        settings.extend(["-ar", "24000"])
 
     return settings

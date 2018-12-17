@@ -15,8 +15,8 @@ def check_args(args):
     Params:
         param1: Object containing all arguments (created by argparse)
     """
-    if args.min_audio < 24 or args.max_audio < 24:
-        raise ValueError("Max/min bitrate too low (must be >= 24 Kbps)!")
+    if args.min_audio < 6 or args.max_audio < 6:
+        raise ValueError("Max/min bitrate too low (must be >= 6 Kbps)!")
 
     if args.start < 0 or args.end < 0:
         raise ValueError("--start/--end can't be less than 0!")
