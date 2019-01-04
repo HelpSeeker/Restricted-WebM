@@ -8,7 +8,6 @@ Functions:
 """
 
 from utils.error import log_error
-from utils.info import input_subtitles
 
 def start_time(in_file):
     """
@@ -76,7 +75,7 @@ def end_time(in_file, start, in_dur):
 
     return end
 
-def input_settings(args, in_file):
+def input_settings(in_file):
     """
     Assemble input settings for ffmpeg.
 
@@ -98,14 +97,14 @@ def input_settings(args, in_file):
     # -ss <start> -i <input> -t <duration>
     # In case of subtitles:
     # -i <input> -ss <start> -t <duration>
-    if args.subtitles and input_subtitles(in_path):
-        settings.extend(["-i", in_path])
-        if start > 0:
-            settings.extend(["-ss", str(start)])
-    else:
-        if start > 0:
-            settings.extend(["-ss", str(start)])
-        settings.extend(["-i", in_path])
+    #if args.subtitles and input_subtitles(in_path):
+    #    settings.extend(["-i", in_path])
+    #    if start > 0:
+    #        settings.extend(["-ss", str(start)])
+    #else:
+    if start > 0:
+        settings.extend(["-ss", str(start)])
+    settings.extend(["-i", in_path])
     if end < in_dur:
         settings.extend(["-t", str(out_dur)])
 

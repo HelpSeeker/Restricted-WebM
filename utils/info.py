@@ -36,6 +36,42 @@ def format_output(output):
     output = output.strip("\n")
     return output
 
+def brute_length(in_path):
+    """
+    Get input length via a test encode.
+    Allows to determine the length of animated GIFs and images.
+
+    Params:
+        param1: Path to the input file
+
+    Returns:
+        Length in seconds as float
+    """
+    out_dir = "webm_temp"
+    out_name = "temp.mkv"
+    out_path = path.join(out_dir, out_name)
+
+    if not path.exists(out_dir):
+        mkdir(out_dir)
+
+    command = ["ffmpeg",
+               "-v", "panic",
+               "-i", in_path,
+               "-map", "0:v",
+               "-c:v", "libx264",
+               "-preset", "ultrafast",
+               "-crf", "51",
+               out_path]
+
+    run(command)
+    output = length(out_path)
+
+    if path.exists(out_path):
+        remove(out_path)
+    rmdir(out_dir)
+
+    return output
+
 def length(in_path):
     """
     Get video length.
@@ -55,6 +91,9 @@ def length(in_path):
     output = run(command, stdout=PIPE).stdout
     output = format_output(output)
 
+    # for pictures (including animated GIF)
+    if output == "N/A":
+        return brute_length(in_path)
     return float(output)
 
 def height(in_path):
@@ -122,6 +161,9 @@ def framerate(in_path):
 
     output = run(command, stdout=PIPE).stdout
     output = format_output(output)
+    # for pictures (excluding animated GIF)
+    if output == "0/0":
+        return 1
     output = output.split("/")
 
     # ffprobe returns frame rate as x/y (e.g. 24/1, 30000/1001)

@@ -150,14 +150,19 @@ def video_settings(args, mode, bitrate):
     elif mode > 2:
         raise ValueError("Invalid bitrate mode!")
 
+    # TO-DO:
     # Test how strong temporal filtering influences high quality encodes
-    alt_ref_opts = ["-auto-alt-ref", "1", "-lag-in-frames", "25",
-                    "-arnr-maxframes", "15", "-arnr-strength", "6"]
-    # Also needs to be disabled once transparency is supported
-    if args.passes == 1:
+    # Figure out how/why alpha channel support cuts short GIFs during 2-pass
+    if args.transparency:
+        pix_opts = ["-pix_fmt", "yuva420p"]
         alt_ref_opts = ["-auto-alt-ref", "0"]
+    else:
+        pix_opts = ["-pix_fmt", "yuv420p"]
+        alt_ref_opts = ["-auto-alt-ref", "1", "-lag-in-frames", "25",
+                        "-arnr-maxframes", "15", "-arnr-strength", "6"]
 
     settings.extend(mode_opts)
+    settings.extend(pix_opts)
     settings.extend(alt_ref_opts)
 
     return settings

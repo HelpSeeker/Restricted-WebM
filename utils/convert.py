@@ -73,8 +73,9 @@ def raw_command(args, in_file):
     """
     command = {"program" : ["ffmpeg"],
                "verbosity": ["-v", "panic"],
-               "input": input_settings(args, in_file),
+               "input": input_settings(in_file),
                "map": map_settings(args, in_file.a_prop.streams),
+               #"bugfix": ["-max_muxing_queue_size", "9999"],
                "video": ["-c:v", "copy"],
                "audio": [],
                "subtitles": [],
@@ -83,7 +84,7 @@ def raw_command(args, in_file):
 
     if args.video_filters or args.trim or args.start != 0:
         command["video"] = ["-c:v", "rawvideo"]
-    if args.filter != "":
+    if args.filter:
         command["filter"] = ["-filter_complex", args.filter]
     if args.subtitles:
         command["subtitles"] = ["-c:s", "copy"]
@@ -123,6 +124,9 @@ def webm_command(args, in_file):
                "filter": [],
                "output": []}
 
+    if not args.filter:
+        command["input"] = input_settings(in_file)
+        command["map"] = map_settings(args, in_file.a_prop.streams)
     if args.audio:
         command["audio"] = audio_settings(args, in_file)
     if args.subtitles:
@@ -174,12 +178,16 @@ def ffmpeg(args, raw, webm, out_path):
 
         # Only print command when debug flag
         if args.debug:
-            print(ffmpeg_raw)
+            if args.filter:
+                print(ffmpeg_raw)
             print(ffmpeg_webm)
         else:
             # Pipe output of 1st command to 2nd command
-            raw_out = Popen(ffmpeg_raw, stdout=PIPE, bufsize=10**8)
-            run(ffmpeg_webm, stdin=raw_out.stdout)
+            if args.filter:
+                raw_out = Popen(ffmpeg_raw, stdout=PIPE, bufsize=10**8)
+                run(ffmpeg_webm, stdin=raw_out.stdout)
+            else:
+                run(ffmpeg_webm)
 
 def limiter(args, in_file, raw, webm):
     """
@@ -345,6 +353,9 @@ def enhancer(args, in_file, raw, webm):
             diff = (size-last_size) / last_size
             if abs(diff) <= 0.02:
                 break
+
+    if path.exists(temp_path):
+        remove(temp_path)
 
 def convert_file(args, in_file):
     """

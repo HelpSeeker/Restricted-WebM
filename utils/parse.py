@@ -49,6 +49,8 @@ def parsed_args():
                         help="use and allow Opus as audio codec")
     parser.add_argument("--subtitles", action="store_true", \
                         help="use input subtitles (if present)")
+    parser.add_argument("--transparency", action="store_true", \
+                        help="preserve input transparency")
     parser.add_argument("--min-audio", type=int, default=6, \
                         help="force min. audio channel bitrate (default: 6)")
     parser.add_argument("--max-audio", type=int, default=9999, \
