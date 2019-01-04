@@ -25,6 +25,7 @@ Basic options:
  -ss, --start <...>         specify start time for all input videos in sec.
  -to, --end <...>           specify end time for all input videos in sec.
  --subtitles                use input subtitles (if present)
+ --transparency             preserve input transparency
 
 Advanced options:
  
