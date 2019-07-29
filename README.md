@@ -1,72 +1,69 @@
-# Restricted-WebM in Bash
+# Restricted-Webm
+A bash script to create webms within a certain file size limit (mainly targeted at 4chan).
 
-A script to produce WebMs within a certain file size limit.
-
-The goal is to automatically produce decent looking WebMs. Little to no user input or prior experience required.
-
-## Usage
+The goal is to produce webms that fit within a specified size limit, while producing the maximum possible quality and requiring minimum user input. If you want fast encoding speed, then this script isn't for you.  
 
 ```
-Usage: restrict.py [OPTIONS] INPUT [INPUT]...
+Usage: convert.sh [-h] [-t] [-a] [-q] [-n] [-x threads] [-s file_size_limit] [-c { auto | manual | video }] [-f filters] 
+		    [-u undershoot_limit] [-i iterations] [-g height_threshold] [-b bpp_threshold] [-m HQ_min_audio_bitrate]
+	
+Main options:
 
-Input:
-  Absolute or relative path to a video/image
+	-h: Show Help.
+	-t: Enable trim mode.
+	-a: Enable audio encoding.
+	-q: Enable HQ (high quality) mode. Higher bpp threshold, higher min. audio bitrate and 2-pass encoding.
+	-n: Use the newer codecs VP9/Opus instead of VP8/Vorbis.
+	-x cores: Fast encoding mode (experimental). For 100% CPU usage specify your CPU's number of threads.
+	-s file_size_limit: Specify the file size limit in MB. Default value is 3.
+	    4chan limits:
+	        /gif/ and /wsg/: 4MB - audio allowed - max. 300 seconds
+	        all other boards: 3MB - no audio allowed - max. 120 seconds
+	    8chan limits:
+	        all boards: 8MB - audio allowed
+	-c { auto | manual | video }: Enable audio showcase mode. Supersedes -a, -u and -q flag.
+	    auto: Use images with matching filename in showcase_pictures
+	    manual: Enter path to picture manually for each video
+	    video: Apply settings to videos in to_convert
+	-f filters: Add custom ffmpeg filters. Refer to ffmpeg's documentation for further information.
+	
+Advanced options:
+(default values can be changed permanently in the beginning of the script)
 
-Common options:
-  -h,  --help               show help
-  -q,  --quiet              suppress non-error output
-  -v,  --verbose            print verbose information
-  -a,  --audio              enable audio output
-  -s,  --size SIZE          limit max. output file size in MB (def: 3)
-  -f,  --filters FILTERS    use custom ffmpeg filters
-  -p,  --passes {1,2}       specify number of passes (def: 2)
-  -u,  --undershoot RATIO   specify undershoot ratio (def: 0.75)
-  -i,  --iterations ITER    iterations for each bitrate mode (def: 3)
-  -t,  --threads THREADS    enable multithreading
-  -ss, --start TIME         start encoding at the specified time
-  -to, --end TIME           end encoding at the specified time
-  -fs, --force-stereo       force stereo audio output
-  -bf, --basic-format       restrict output to one video/audio stream
-
-Subtitle options:
-  --subtitles               enable subtitle output
-  --mkv-fallback            allow usage of MKV for image-based subtitles
-  --burn-subs               discard soft subtitles after hardsubbing
-
-Advanced video options:
-  --vp9                     use VP9 instead of VP8
-  --crf                     use constrained quality instead of VBR
-  --no-qmax                 skip the first bitrate mode (VBR with qmax)
-  --bpp BPP                 set custom bpp threshold (def: 0.075)
-  --transparency            preserve input transparency
-  --pix-fmt FORMAT          choose color space (def: yuv420p)
-  --min-height HEIGHT       force min. output height (def: 240)
-  --max-height HEIGHT       force max. output height
-  --min-fps FPS             force min. frame rate (def: 24)
-  --max-fps FPS             force max. frame rate
-
-Advanced audio options:
-  --opus                    use and allow Opus as audio codec
-  --no-copy                 disable stream copying
-  --force-copy              force-copy compatible (!) audio streams
-  --min-audio RATE          force min. channel bitrate in Kbps (def: 24)
-  --max-audio RATE          force max. channel bitrate in Kbps
-
-Misc. options:
-  --no-filter-firstpass     disable user filters during the first pass
-  --ffmpeg-verbosity LEVEL  change FFmpeg command verbosity (def: stats)
-  --no-color                disable colorized output
-  --debug                   only print ffmpeg commands
-
-All output will be saved in 'webm_done/'.
-'webm_done/' is located in the same directory as the input.
+	-u undershoot_limit: Define what percentage of the file size limit must be utilized. Default value: 0.75 (75%).
+	-i iterations: Define how many encoding attempts there will be for each bitrate mode. Default value is 3.
+	-g height_threshold: Set the minimum pixel height the output webm should have. Default value: 180.
+	-b bpp_threshold: Set the minimum bpp value the output webm should have (higher values -> higher quality, more downscaling). 
+			    Default value: 0.04 for normal, 0.075 for HQ/audio showcase mode.
+	-m HQ_min_audio_bitrate: Set the minimum audio bitrate for HQ mode. Default value: 96.
 ```
 
-## Requirements
+**Requirements:**  
+ffmpeg (with libvpx, libvpx-vp9, libvorbis and libopus enabled)  
+ffprobe  
+```
+Folder structure:
 
-* Python 3
-* [FFmpeg (incl. ffprobe)](https://www.ffmpeg.org/)
+Restricted-Webm/
+│
+├── convert.sh
+│
+├── showcase_pictures/ (only when using the audio showcase mode with the auto option)
+│     │ 
+│     │ (the following files are pictures with the same name as the files in to_convert/; extension doesn't matter)
+│     │ file01.jpg
+│     │ file02.png
+│     │ file03.gif
+│     │ ...
+│
+├── to_convert/
+      │ 
+      │ file01
+      │ file02
+      │ file03
+      │ ...
 
-***
+```
 
-For further information consult the [wiki](https://github.com/HelpSeeker/Restricted-WebM/wiki)!
+
+For further information consult the [wiki](https://github.com/HelpSeeker/Restricted-WebM/wiki/Legacy-Information)!
