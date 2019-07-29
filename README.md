@@ -4,6 +4,10 @@ A script to produce WebMs within a certain file size limit.
 
 The goal is to automatically produce decent looking WebMs. Little to no user input or prior experience required.
 
+**Alternative versions:**
+* [New Bash version](https://github.com/HelpSeeker/Restricted-WebM/tree/bash)
+* [Original (legacy) Bash version](https://github.com/HelpSeeker/Restricted-WebM/tree/legacy)
+
 ## Usage
 
 ```
