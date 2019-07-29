@@ -1,13 +1,14 @@
-# Restricted-WebM in Bash
+# Restricted-WebM
 
-A script to produce WebMs within a certain file size limit.
+A script to produce WebMs within a certain file size limit.  
 
-The goal is to automatically produce decent looking WebMs. Little to no user input or prior experience required.
+The goal is to automatically produce decent looking WebMs. Little to no user input or prior experience required.    
 
 ## Usage
 
 ```
-Usage: restrict.py [OPTIONS] INPUT [INPUT]...
+
+Usage: restrict.sh [OPTIONS] INPUT [INPUT]...
 
 Input:
   Absolute or relative path to a video/image
@@ -64,8 +65,12 @@ All output will be saved in 'webm_done/'.
 
 ## Requirements
 
-* Python 3
+* Bash >= 4.0
 * [FFmpeg (incl. ffprobe)](https://www.ffmpeg.org/)
+* [bc](https://www.gnu.org/software/bc/)
+* [jq](https://stedolan.github.io/jq/)
+* [grep](https://www.gnu.org/software/grep/)
+* an AWK implementation
 
 ***
 
