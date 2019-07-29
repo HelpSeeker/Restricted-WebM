@@ -1,53 +1,72 @@
-# Restricted-WebM
+# Restricted-WebM in Bash
 
-A Python script to produce WebMs within a certain file size limit.  
-The goal is to automatically produce decent looking WebMs. Little to no user input or prior experience required.    
+A script to produce WebMs within a certain file size limit.
 
-The old version (written in Bash) can be found [here](https://github.com/HelpSeeker/Restricted-WebM-legacy-).
+The goal is to automatically produce decent looking WebMs. Little to no user input or prior experience required.
 
-### Requirements
+## Usage
 
-* Python 3.6
-* ffmpeg and ffprobe (both available via your PATH)
-
-### Usage
 ```
-python restrict.py [OPTIONS]... INPUT [INPUT]...
+Usage: restrict.py [OPTIONS] INPUT [INPUT]...
 
-Basic options:
+Input:
+  Absolute or relative path to a video/image
 
- -h, --help                 show this help message and exit
- -t, --trim                 prompt user for trim settings for each video
- -a, --audio                use input audio (if present)
- -s, --size <...>           specify file size limit in MiB (default: 3)
- -f, --filter <...>         pass custom ffmpeg filters
- -p, --passes {1,2}         force single/two-pass encoding (default: 2)
- -ss, --start <...>         specify start time for all input videos in sec.
- -to, --end <...>           specify end time for all input videos in sec.
- --subtitles                use input subtitles (if present)
- --transparency             preserve input transparency
+Common options:
+  -h,  --help               show help
+  -q,  --quiet              suppress non-error output
+  -v,  --verbose            print verbose information
+  -a,  --audio              enable audio output
+  -s,  --size SIZE          limit max. output file size in MB (def: 3)
+  -f,  --filters FILTERS    use custom ffmpeg filters
+  -p,  --passes {1,2}       specify number of passes (def: 2)
+  -u,  --undershoot RATIO   specify undershoot ratio (def: 0.75)
+  -i,  --iterations ITER    iterations for each bitrate mode (def: 3)
+  -t,  --threads THREADS    enable multithreading
+  -ss, --start TIME         start encoding at the specified time
+  -to, --end TIME           end encoding at the specified time
+  -fs, --force-stereo       force stereo audio output
+  -bf, --basic-format       restrict output to one video/audio stream
 
-Advanced options:
- 
- -u, --undershoot <...>     specify undershoot limit (default 0.75)
- -i, --iterations <...>     iterations for each bitrate mode (default: 3)
- -fs, --force-stereo        force stereo audio output
- -bf, --basic-format        limit the output to max. one video/audio stream
- -mih, --min-height <...>   force min. output height (default: 240)
- -mah, --max-height <...>   force max. output height
- --bpp <...>                specify custom bpp threshold (default: 0.075)
- --min-fps <...>            specify the min. framerate threshold (default: 24)
- --max-fps <...>            specify a max. framerate threshold
- --opus                     use and allow Opus as audio codec
- --min-audio <...>          force min. audio channel bitrate (default: 24)
- --max-audio <...>          force max. audio channel bitrate (default: 96)
- --mkv-fallback             allow usage of MKV for image-based subtitles
- --no-filter-firstpass      disable filters during the first pass
- --no-copy                  disable stream copying
- --force-copy               force-copy compatible audio (!) streams
- --no-qmax                  skip the first bitrate mode (VBR with qmax)
- --audio-factor <...>       factor used to choose audio bitrate (default: 5.5)
- --debug                    only print ffmpeg commands
+Subtitle options:
+  --subtitles               enable subtitle output
+  --mkv-fallback            allow usage of MKV for image-based subtitles
+  --burn-subs               discard soft subtitles after hardsubbing
+
+Advanced video options:
+  --vp9                     use VP9 instead of VP8
+  --crf                     use constrained quality instead of VBR
+  --no-qmax                 skip the first bitrate mode (VBR with qmax)
+  --bpp BPP                 set custom bpp threshold (def: 0.075)
+  --transparency            preserve input transparency
+  --pix-fmt FORMAT          choose color space (def: yuv420p)
+  --min-height HEIGHT       force min. output height (def: 240)
+  --max-height HEIGHT       force max. output height
+  --min-fps FPS             force min. frame rate (def: 24)
+  --max-fps FPS             force max. frame rate
+
+Advanced audio options:
+  --opus                    use and allow Opus as audio codec
+  --no-copy                 disable stream copying
+  --force-copy              force-copy compatible (!) audio streams
+  --min-audio RATE          force min. channel bitrate in Kbps (def: 24)
+  --max-audio RATE          force max. channel bitrate in Kbps
+
+Misc. options:
+  --no-filter-firstpass     disable user filters during the first pass
+  --ffmpeg-verbosity LEVEL  change FFmpeg command verbosity (def: stats)
+  --no-color                disable colorized output
+  --debug                   only print ffmpeg commands
+
+All output will be saved in 'webm_done/'.
+'webm_done/' is located in the same directory as the input.
 ```
+
+## Requirements
+
+* Python 3
+* [FFmpeg (incl. ffprobe)](https://www.ffmpeg.org/)
+
+***
 
 For further information consult the [wiki](https://github.com/HelpSeeker/Restricted-WebM/wiki)!
