@@ -2,7 +2,11 @@
 
 A script to produce WebMs within a certain file size limit.  
 
-The goal is to automatically produce decent looking WebMs. Little to no user input or prior experience required.    
+The goal is to automatically produce decent looking WebMs. Little to no user input or prior experience required. 
+
+**Alternative versions:**
+* [Main Python version](https://github.com/HelpSeeker/Restricted-WebM)
+* [Original (legacy) Bash version](https://github.com/HelpSeeker/Restricted-WebM/tree/legacy)
 
 ## Usage
 
