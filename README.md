@@ -1,4 +1,4 @@
-# Restricted-WebM in Bash
+# Restricted-WebM
 
 A script to produce WebMs within a certain file size limit.
 
