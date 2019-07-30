@@ -572,7 +572,7 @@ function resolve_paths() {
     local ext="$2"
 
     local in_name="$(basename "$file")"
-    in_name = "${in_name%.*}"
+    in_name="${in_name%.*}"
     local in_dir="$(dirname "$file")"
     local out_name="$in_name.$ext"
     local out_dir="$in_dir/$out_dir_name"
@@ -628,7 +628,7 @@ function audio_copy() {
 
     local allowed_codec=false
     local -a codec_list=("vorbis")
-    [[ a_codec == "libopus" ]] && codec_list+=("opus")
+    [[ $a_codec == "libopus" ]] && codec_list+=("opus")
     for codec in "${codec_list[@]}"
     do
         [[ $codec == "$in_codec" ]] && { allowed_codec=true; break; }
@@ -1045,7 +1045,7 @@ function get_audio_settings() {
     do
         if audio_copy "$file" $i ${audio_values[$i]}; then
             audio_settings+=("-c:a:$i" "copy")
-        elif [[ a_codec == "libopus" ]] && opus_fallback "$file" $i; then
+        elif [[ $a_codec == "libopus" ]] && opus_fallback "$file" $i; then
             audio_settings+=("-c:a:$i" "$fallback_codec")
             audio_settings+=("-b:a:$i" "${audio_values[$i]}K")
         else
