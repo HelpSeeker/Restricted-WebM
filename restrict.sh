@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Catch user interrupt (Ctrl+C)
-trap keyboard_interrupt SIGINT
+trap keyboard_interrupt SIGINT SIGQUIT SIGTERM
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Default settings
@@ -52,10 +52,14 @@ declare -r   min_bitrate_ratio=0.9
 declare -r   skip_limit=0.01
 declare -r   audio_factor=5.5
 declare -r   fallback_codec="libvorbis"
-declare -r   temp_name="temp"
-declare -r   input_info="in.json"
-declare -r   output_info="out.json"
 declare -r   out_dir_name="webm_done"
+# Randomize temp name to allow several instances to run at the same time
+declare -r   random_name="$(date +%s_%N)_$RANDOM"
+declare -r   ffmpeg_log_prefix="$random_name"
+declare -r   temp_name="$random_name"
+declare -r   input_info="${random_name}_in.json"
+declare -r   output_info="${random_name}_out.json"
+
 
 # Initializations, which shouldn't be touched
 declare -a input_list
@@ -1177,11 +1181,15 @@ function call_ffmpeg() {
         if (( passes == 1 )); then
             pass_settings=("-cpu-used" "0" "$path")
         elif (( pass == 1 )); then
-            pass_settings=("-cpu-used" "5" "-pass" "1" "-f" "null" "-")
+            pass_settings=("-cpu-used" "5")
+            pass_settings+=("-passlogfile" "$ffmpeg_log_prefix" "-pass" "1")
+            pass_settings+=("-f" "null" "-")
             [[ $no_filter_firstpass == true ]] && raw_filter=()
-            [[ -e ffmpeg2pass-0.log ]] && continue
+            [[ -e "$ffmpeg_log_prefix-0.log" ]] && continue
         elif (( pass == 2 )); then
-            pass_settings=("-cpu-used" "0" "-pass" "2" "$path")
+            pass_settings=("-cpu-used" "0")
+            pass_settings+=("-passlogfile" "$ffmpeg_log_prefix" "-pass" "2")
+            pass_settings+=("$path")
             raw_filter=("-filter_complex" "$user_filters")
         fi
 
@@ -1405,7 +1413,7 @@ function enhance_size() {
 function clean() {
     # delete leftover files
     rm "$input_info" "$output_info" "$temp_name".* 2> /dev/null
-    (( passes == 2 )) && rm ffmpeg2pass-0.log 2> /dev/null
+    (( passes == 2 )) && rm "$ffmpeg_log_prefix-0.log" 2> /dev/null
     # Unset all file specific variables/arrays
     unset output
     unset trim_values
