@@ -1413,11 +1413,14 @@ def main():
             err("Error: Unsupported stream order (first stream not video)!")
             clean()
             continue
-        elif input_info['streams'][1]['codec_type'] == "video":
-            err(video)
-            err("Error: More than one video stream per file not supported!")
-            clean()
-            continue
+        try:
+            if input_info['streams'][1]['codec_type'] == "video":
+                err(video)
+                err("Error: More than one video stream per file not supported!")
+                clean()
+                continue
+        except IndexError:
+            pass
 
         values = Values_Assembler()
         values.calculate_trim_values(video, input_info)
