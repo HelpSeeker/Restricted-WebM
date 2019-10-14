@@ -1209,7 +1209,11 @@ def limit_size(in_file, temp_file, out_file, in_json, val, flags):
             if i == 1:
                 v_bitrate = val.video['bitrate']
             else:
-                new_rate = int(v_bitrate * max_size/sizes['temp'])
+                # Size ratio dictates overall bitrate change, but audio bitrate is const
+                # (v+a) = (v_old+a) * (max/curr)
+                # v = v_old * (max/curr) + (max/curr - 1) * a
+                a_offset = int((max_size/sizes['temp'] - 1) * val.audio['bitrate'])
+                new_rate = int(v_bitrate * max_size/sizes['temp'] + a_offset)
                 min_rate = int(v_bitrate * opts.min_bitrate_ratio)
                 # Force min. decrease (% of last bitrate)
                 if new_rate > min_rate:
@@ -1287,9 +1291,11 @@ def raise_size(in_file, temp_file, out_file, in_json, limit_info, val, flags):
         if min_size <= sizes['out'] <= max_size:
             break
 
-        # Force min. decrease (% of last bitrate; default: 90%)
-        new_rate = int(v_bitrate * max_size/sizes['temp'])
+        # a_offset: See limit_size() for purpose 
+        a_offset = int((max_size/sizes['temp'] - 1) * val.audio['bitrate'])
+        new_rate = int(v_bitrate * max_size/sizes['temp'] + a_offset)
         min_rate = int(v_bitrate * opts.min_bitrate_ratio)
+        # Force min. decrease (% of last bitrate)
         if min_rate < new_rate < v_bitrate:
             v_bitrate = min_rate
         else:
