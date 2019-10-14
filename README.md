@@ -41,6 +41,7 @@ Advanced video options:
   --vp9                     use VP9 instead of VP8
   --crf                     use constrained quality instead of VBR
   --no-qmax                 skip the first bitrate mode (VBR with qmax)
+  --no-cbr                  skip the last bitrate mode (CBR with frame dropping)
   --bpp BPP                 set custom bpp threshold (def: 0.075)
   --transparency            preserve input transparency
   --pix-fmt FORMAT          choose color space (def: yuv420p)
@@ -68,7 +69,7 @@ All output will be saved in 'webm_done/'.
 
 ## Requirements
 
-* Python 3
+* Python >= 3.6
 * [FFmpeg (incl. ffprobe)](https://www.ffmpeg.org/)
 
 ***
