@@ -57,6 +57,7 @@ class Options:
     v_codec = "libvpx"
     crf = False
     no_qmax = False
+    no_cbr = False
     bpp_thresh = 0.075
     transparency = False
     pix_fmt = "yuv420p"
@@ -472,7 +473,9 @@ class Settings:
             self.video.extend(["-qmax", str(opts.min_quality)])
         elif mode == 3:
             self.video.extend(["-minrate:v", str(v_bitrate) + "K",
-                               "-maxrate:v", str(v_bitrate) + "K"])
+                               "-maxrate:v", str(v_bitrate) + "K",
+                               "-bufsize", str(v_bitrate*5) + "K",
+                               "-skip_threshold", "100"])
 
         self.video.extend(["-threads", str(opts.threads)])
 
@@ -549,6 +552,7 @@ Advanced video options:
   --vp9                     use VP9 instead of VP8
   --crf                     use constrained quality instead of VBR
   --no-qmax                 skip the first bitrate mode (VBR with qmax)
+  --no-cbr                  skip the last bitrate mode (CBR with frame dropping)
   --bpp BPP                 set custom bpp threshold (def: {opts.bpp_thresh})
   --transparency            preserve input transparency
   --pix-fmt FORMAT          choose color space (def: {opts.pix_fmt})
@@ -678,6 +682,8 @@ def parse_cli():
                 opts.crf = True
             elif opt == "--no-qmax":
                 opts.no_qmax = True
+            elif opt == "--no-cbr":
+                opts.no_cbr = True
             elif opt == "--bpp":
                 opts.bpp_thresh = float(arg)
             elif opt == "--transparency":
@@ -919,7 +925,8 @@ Video:
   CRF:                         {opts.crf_value}
   qmax:                        {opts.min_quality}
   Fallback bitrate (Kbps):     {opts.fallback_bitrate}
-  Omit min. quality qmax:      {opts.no_qmax}
+  Skip VBR with min. quality:  {opts.no_qmax}
+  Skip CBR:                    {opts.no_cbr}
   Iterations/bitrate mode:     {opts.iters}
   Mode skip threshold:         {opts.skip_limit}
   Min. bitrate ratio:          {opts.min_bitrate_ratio}
@@ -1107,7 +1114,7 @@ def out_image_subs(in_file):
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def call_ffmpeg(out_file, flags):
+def call_ffmpeg(out_file, flags, mode):
     """Execute FFmpeg (and assemble pass specific settings)"""
 
     v_raw = ["-c:v", "copy"]
@@ -1121,7 +1128,7 @@ def call_ffmpeg(out_file, flags):
         f_raw = ["-filter_complex", opts.f_user]
 
     for p in range(1, opts.passes+1):
-        if opts.passes == 1:
+        if opts.passes == 1 or mode == 3:
             p_flags = ["-cpu-used", "0", out_file]
         elif p == 1:
             p_flags = ["-cpu-used", "5", "-pass", "1", "-f", "null", "-"]
@@ -1170,6 +1177,9 @@ def call_ffmpeg(out_file, flags):
             else:
                 subprocess.run(webm)
 
+        if mode == 3:
+            break
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def limit_size(in_file, temp_file, out_file, in_json, val, flags):
@@ -1184,7 +1194,12 @@ def limit_size(in_file, temp_file, out_file, in_json, val, flags):
         'out': 0
     }
 
+    # VBR + qmax (1), VBR (2) and CBR (3)
     modes = 3
+    # omit CBR when --no-cbr is used
+    if opts.no_cbr:
+        modes = 2
+
     for m in range(1, modes+1):
         if m == 1 and opts.no_qmax:
             continue
@@ -1218,7 +1233,7 @@ def limit_size(in_file, temp_file, out_file, in_json, val, flags):
             if opts.verbosity >= 2:
                 print_iter_info(flags)
 
-            call_ffmpeg(temp_file, flags)
+            call_ffmpeg(temp_file, flags, m)
 
             # Debug doesn't produce output; specify manually
             if opts.debug:
@@ -1296,7 +1311,7 @@ def raise_size(in_file, temp_file, out_file, in_json, limit_info, val, flags):
         if opts.verbosity >= 2:
             print_iter_info(flags)
 
-        call_ffmpeg(temp_file, flags)
+        call_ffmpeg(temp_file, flags, m)
 
         # Debug doesn't produce output; specify manually
         if opts.debug:
