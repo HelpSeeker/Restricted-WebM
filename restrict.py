@@ -43,16 +43,21 @@ class Options:
     verbosity = 1
     audio = False
     limit = 3
+    f_user = None
     passes = 2
     under = 0.75
     iters = 3
     threads = 1
+    global_start = None
+    global_end = None
     force_stereo = False
     basic_format = False
+
     # Subtitle options
     subs = False
     mkv_fallback = False
     burn_subs = False
+
     # Advanced video options
     v_codec = "libvpx"
     crf = False
@@ -62,12 +67,17 @@ class Options:
     transparency = False
     pix_fmt = "yuv420p"
     min_height = 240
+    max_height = None
     min_fps = 24
+    max_fps = None
+
     # Advanced audio settings
     a_codec = "libvorbis"
     no_copy = False
     force_copy = False
     min_audio = 24
+    max_audio = None
+
     # Misc settings
     no_filter_firstpass = False
     ffmpeg_verbosity = "stats"
@@ -91,7 +101,6 @@ class Options:
     # Don't touch
     f_audio = False
     f_video = False
-    f_user = ""
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -132,9 +141,9 @@ class Values:
         start = 0
         end = dur
 
-        if hasattr(opts, "global_start") and opts.global_start < dur:
+        if opts.global_start and opts.global_start < dur:
             start = opts.global_start
-        if hasattr(opts, "global_end") and opts.global_end <= dur:
+        if opts.global_end and opts.global_end <= dur:
             end = opts.global_end
 
         self.trim['in_dur'] = dur
@@ -203,7 +212,7 @@ class Values:
 
         if c_bitrate < opts.min_audio:
             c_bitrate = opts.min_audio
-        if hasattr(opts, "max_audio") and c_bitrate > opts.max_audio:
+        if opts.max_audio and c_bitrate > opts.max_audio:
             c_bitrate = opts.max_audio
 
         # Use internal stream count to get right audio index
@@ -312,7 +321,7 @@ class Values:
         # Enfore frame rate thresholds
         if fps < opts.min_fps:
             fps = opts.min_fps
-        if hasattr(opts, "max_fps") and fps > opts.max_fps:
+        if opts.max_fps and fps > opts.max_fps:
             fps = opts.max_fps
         if fps > self.filter['in_fps']:
             fps = self.filter['in_fps']
@@ -331,7 +340,7 @@ class Values:
         # Enforce height thresholds
         if h < opts.min_height:
             h = opts.min_height
-        if hasattr(opts, "max_height") and h > opts.max_height:
+        if opts.max_height and h > opts.max_height:
             h = opts.max_height
         if h > self.filter['in_height']:
             h = self.filter['in_height']
@@ -368,12 +377,12 @@ class Settings:
 
         in_dur = val.trim['in_dur']
 
-        if hasattr(opts, "global_start") and opts.global_start < in_dur:
+        if opts.global_start and opts.global_start < in_dur:
             self.input.extend(["-ss", str(opts.global_start)])
 
         self.input.extend(["-i", in_file])
 
-        if hasattr(opts, "global_end") and opts.global_end <= in_dur:
+        if opts.global_end and opts.global_end <= in_dur:
             self.input.extend(["-t", str(val.trim['out_dur'])])
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -753,7 +762,7 @@ def check_options():
     elif opts.min_height <= 0:
         err("Min. height must be greater than 0!")
         sys.exit(err_stat['opt'])
-    elif hasattr(opts, "max_height") and opts.max_height < opts.min_height:
+    elif opts.max_height and opts.max_height < opts.min_height:
         err("Max. height can't be less than min. height!")
         sys.exit(err_stat['opt'])
     elif opts.threads <= 0:
@@ -762,10 +771,10 @@ def check_options():
     elif opts.threads > 16:
         # Just a warning
         err("More than 16 threads are not recommended.")
-    elif hasattr(opts, "max_audio") and opts.max_audio < 6:
+    elif opts.max_audio and opts.max_audio < 6:
         err("Max. audio channel bitrate must be greater than 6 Kbps!")
         sys.exit(err_stat['opt'])
-    elif hasattr(opts, "max_audio") and opts.max_audio < opts.min_audio:
+    elif opts.max_audio and opts.max_audio < opts.min_audio:
         err("Max. audio channel bitrate can't be less than min. audio channel bitrate!")
         sys.exit(err_stat['opt'])
 
@@ -773,10 +782,10 @@ def check_options():
     if opts.limit <= 0:
         err("Target file size must be greater than 0!")
         sys.exit(err_stat['opt'])
-    elif hasattr(opts, "global_end") and opts.global_end <= 0:
+    elif opts.global_end and opts.global_end <= 0:
         err("End time must be greater than 0!")
         sys.exit(err_stat['opt'])
-    elif hasattr(opts, "global_start") and hasattr(opts, "global_end") and \
+    elif opts.global_start and opts.global_end and \
          opts.global_end <= opts.global_start:
         err("End time must be greater than start time!")
         sys.exit(err_stat['opt'])
@@ -786,10 +795,10 @@ def check_options():
     elif opts.bpp_thresh <= 0:
         err("Bits per pixel threshold must be greater than 0!")
         sys.exit(err_stat['opt'])
-    elif hasattr(opts, "max_fps") and opts.max_fps < 1:
+    elif opts.max_fps and opts.max_fps < 1:
         err("Max. frame rate can't be less than 1!")
         sys.exit(err_stat['opt'])
-    elif hasattr(opts, "max_fps") and opts.max_fps < opts.min_fps:
+    elif opts.max_fps and opts.max_fps < opts.min_fps:
         err("Max. frame rate can't be less than min. frame rate!")
         sys.exit(err_stat['opt'])
 
@@ -913,8 +922,8 @@ Size:
   Min. size (Bytes):           {int(opts.limit*1024**2*opts.under)}
 
 Trimming:
-  Start time (sec):            {opts.global_start if hasattr(opts, "global_start") else "-"}
-  End time (sec):              {opts.global_end if hasattr(opts, "global_end") else "-"}
+  Start time (sec):            {opts.global_start if opts.global_start else "-"}
+  End time (sec):              {opts.global_end if opts.global_end else "-"}
 
 Video:
   Encoder:                     {opts.v_codec}
@@ -937,7 +946,7 @@ Audio:
   Fallback encoder:            {opts.fallback_codec}
   Force stereo:                {opts.force_stereo}
   Min. channel bitrate (Kbps): {opts.min_audio}
-  Max. channel bitrate (Kbps): {opts.max_audio if hasattr(opts, "max_audio") else "-"}
+  Max. channel bitrate (Kbps): {opts.max_audio if opts.max_audio else "-"}
   Stream copying disabled:     {opts.no_copy}
   Ignore bitrate for copying:  {opts.force_copy}
   Bitrate test duration (sec): {opts.audio_test_dur}
@@ -955,10 +964,10 @@ Filters:
   Omit during 1st pass:        {opts.no_filter_firstpass}
   BPP threshold:               {opts.bpp_thresh}
   Min. height threshold:       {opts.min_height}
-  Max. height threshold:       {opts.max_height if hasattr(opts, "max_height") else "-"}
+  Max. height threshold:       {opts.max_height if opts.max_height else "-"}
   Height reduction step:       {opts.height_reduction}
   Min. frame rate threshold:   {opts.min_fps}
-  Max. frame rate threshold:   {opts.max_fps if hasattr(opts, "max_fps") else "-"}
+  Max. frame rate threshold:   {opts.max_fps if opts.max_fps else "-"}
   Possible frame rates:        {opts.fps_list}
 
 Misc.:
@@ -1033,7 +1042,7 @@ def resolve_paths(in_file, ext):
 def audio_copy(in_file, stream, out_rate):
     """Decide if input audio stream should be copied"""
 
-    if hasattr(opts, "global_start") or opts.f_audio or opts.no_copy:
+    if opts.global_start or opts.f_audio or opts.no_copy:
         return False
 
     # Shorter values speed up test, but only approximate avg. bitrate
@@ -1120,9 +1129,9 @@ def call_ffmpeg(out_file, flags, mode):
     v_raw = ["-c:v", "copy"]
     a_raw = ["-c:a", "copy"]
     f_raw = []
-    if hasattr(opts, "global_start") or opts.f_video:
+    if opts.global_start or opts.f_video:
         v_raw = ["-c:v", "rawvideo"]
-    if hasattr(opts, "global_start") or opts.f_audio:
+    if opts.global_start or opts.f_audio:
         a_raw = ["-c:a", "pcm_s16le"]
     if opts.f_user:
         f_raw = ["-filter_complex", opts.f_user]
@@ -1291,7 +1300,7 @@ def raise_size(in_file, temp_file, out_file, in_json, limit_info, val, flags):
         if min_size <= sizes['out'] <= max_size:
             break
 
-        # a_offset: See limit_size() for purpose 
+        # a_offset: See limit_size() for purpose
         a_offset = int((max_size/sizes['temp'] - 1) * val.audio['bitrate'])
         new_rate = int(v_bitrate * max_size/sizes['temp'] + a_offset)
         min_rate = int(v_bitrate * opts.min_bitrate_ratio)
