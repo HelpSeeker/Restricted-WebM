@@ -1241,7 +1241,7 @@ def limit_size(in_file, temp_file, out_file, in_json, val, flags):
 
             # Debug doesn't produce output; specify manually
             if opts.debug:
-                sizes['user'] = int(input("Output size in MB: "))
+                sizes['user'] = float(input("Output size in MB: "))
                 sizes['last'] = sizes['temp']
                 sizes['temp'] = int(sizes['user']*1024**2)
                 if not sizes['out'] or sizes['temp'] < sizes['out']:
@@ -1321,7 +1321,7 @@ def raise_size(in_file, temp_file, out_file, in_json, limit_info, val, flags):
 
         # Debug doesn't produce output; specify manually
         if opts.debug:
-            sizes['user'] = int(input("Output size in MB: "))
+            sizes['user'] = float(input("Output size in MB: "))
             sizes['last'] = sizes['temp']
             sizes['temp'] = int(sizes['user']*1024**2)
             if sizes['temp'] < sizes['out']:
