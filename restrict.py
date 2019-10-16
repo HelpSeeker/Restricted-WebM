@@ -231,13 +231,27 @@ class Values:
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    def calc_video(self):
+    def calc_video(self, sizes, init):
         """Calculate values regarding video settings"""
 
         max_size = int(opts.limit*1024**2)
 
-        bitrate = max_size*8 / (self.trim['out_dur']*1000) - self.audio['bitrate']
-        bitrate = int(bitrate)
+        # Reset bitrate for each bitrate mode
+        if init:
+            bitrate = max_size*8 / (self.trim['out_dur']*1000) - self.audio['bitrate']
+            bitrate = int(bitrate)
+        else:
+            # Size ratio dictates overall bitrate change, but audio bitrate is const
+            # (v+a) = (v_old+a) * (max/curr)
+            # v = v_old * (max/curr) + (max/curr - 1) * a
+            a_offset = int((max_size/sizes['temp'] - 1) * self.audio['bitrate'])
+            new_rate = int(self.video['bitrate'] * max_size/sizes['temp'] + a_offset)
+            min_rate = int(self.video['bitrate'] * opts.min_bitrate_ratio)
+            # Force min. decrease (% of last bitrate)
+            if min_rate < new_rate < self.video['bitrate']:
+                bitrate = min_rate
+            else:
+                bitrate = new_rate
 
         if bitrate <= 0:
             bitrate = opts.fallback_bitrate
@@ -246,7 +260,7 @@ class Values:
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    def calc_filter(self, in_file, in_json, v_bitrate):
+    def calc_filter(self, in_file, in_json):
         """Calculate values regarding (script) filter settings"""
 
         # Test for user set scale/fps filter
@@ -313,7 +327,7 @@ class Values:
             if user_fps:
                 break
 
-            bpp = v_bitrate*1000 / (fps*ratio*h**2)
+            bpp = self.video['bitrate']*1000 / (fps*ratio*h**2)
             if bpp >= opts.bpp_thresh/2:
                 break
             fps = f
@@ -332,7 +346,7 @@ class Values:
             if user_scale:
                 break
 
-            bpp = v_bitrate*1000 / (fps*ratio*h**2)
+            bpp = self.video['bitrate']*1000 / (fps*ratio*h**2)
             if bpp >= opts.bpp_thresh:
                 break
             h -= opts.height_reduction
@@ -449,7 +463,7 @@ class Settings:
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-    def get_video(self, mode, v_bitrate):
+    def get_video(self, mode, val):
         """Assemble FFmpeg settings regarding video"""
 
         # Function gets called several times for a file
@@ -473,7 +487,7 @@ class Settings:
                                "-arnr-maxframes", "15",
                                "-arnr-strength", "6"])
 
-        self.video.extend(["-b:v", str(v_bitrate) + "K"])
+        self.video.extend(["-b:v", str(val.video['bitrate']) + "K"])
 
         if opts.crf and mode in (1, 2):
             self.video.extend(["-crf", str(opts.crf_value)])
@@ -481,9 +495,9 @@ class Settings:
         if mode == 1:
             self.video.extend(["-qmax", str(opts.min_quality)])
         elif mode == 3:
-            self.video.extend(["-minrate:v", str(v_bitrate) + "K",
-                               "-maxrate:v", str(v_bitrate) + "K",
-                               "-bufsize", str(v_bitrate*5) + "K",
+            self.video.extend(["-minrate:v", str(val.video['bitrate']) + "K",
+                               "-maxrate:v", str(val.video['bitrate']) + "K",
+                               "-bufsize", str(val.video['bitrate']*5) + "K",
                                "-skip_threshold", "100"])
 
         self.video.extend(["-threads", str(opts.threads)])
@@ -1214,27 +1228,10 @@ def limit_size(in_file, temp_file, out_file, in_json, val, flags):
             continue
 
         for i in range(1, opts.iters+1):
-            # Reset bitrate for each bitrate mode
-            if i == 1:
-                v_bitrate = val.video['bitrate']
-            else:
-                # Size ratio dictates overall bitrate change, but audio bitrate is const
-                # (v+a) = (v_old+a) * (max/curr)
-                # v = v_old * (max/curr) + (max/curr - 1) * a
-                a_offset = int((max_size/sizes['temp'] - 1) * val.audio['bitrate'])
-                new_rate = int(v_bitrate * max_size/sizes['temp'] + a_offset)
-                min_rate = int(v_bitrate * opts.min_bitrate_ratio)
-                # Force min. decrease (% of last bitrate)
-                if new_rate > min_rate:
-                    v_bitrate = min_rate
-                else:
-                    v_bitrate = new_rate
-
-            if v_bitrate <= 0:
-                v_bitrate = opts.fallback_bitrate
-
-            val.calc_filter(in_file, in_json, v_bitrate)
-            flags.get_video(m, v_bitrate)
+            # i == 1 re-initialize, otherwise adjust
+            val.calc_video(sizes, init=i == 1)
+            val.calc_filter(in_file, in_json)
+            flags.get_video(m, val)
             flags.get_filters(val)
 
             if opts.verbosity >= 1:
@@ -1278,7 +1275,6 @@ def limit_size(in_file, temp_file, out_file, in_json, val, flags):
 
     exit_info = {
         'mode': m,
-        'bitrate': v_bitrate,
         'sizes': sizes
     }
 
@@ -1294,27 +1290,15 @@ def raise_size(in_file, temp_file, out_file, in_json, limit_info, val, flags):
 
     sizes = limit_info['sizes']
     m = limit_info['mode']
-    v_bitrate = limit_info['bitrate']
 
     for i in range(1, opts.iters+1):
         if min_size <= sizes['out'] <= max_size:
             break
 
-        # a_offset: See limit_size() for purpose
-        a_offset = int((max_size/sizes['temp'] - 1) * val.audio['bitrate'])
-        new_rate = int(v_bitrate * max_size/sizes['temp'] + a_offset)
-        min_rate = int(v_bitrate * opts.min_bitrate_ratio)
-        # Force min. decrease (% of last bitrate)
-        if min_rate < new_rate < v_bitrate:
-            v_bitrate = min_rate
-        else:
-            v_bitrate = new_rate
-
-        if v_bitrate <= 0:
-            v_bitrate = opts.fallback_bitrate
-
-        val.calc_filter(in_file, in_json, v_bitrate)
-        flags.get_video(m, v_bitrate)
+        # don't re-initialize; adjust the last bitrate from limit_size()
+        val.calc_video(sizes, init=False)
+        val.calc_filter(in_file, in_json)
+        flags.get_video(m, val)
         flags.get_filters(val)
 
         if opts.verbosity >= 1:
@@ -1352,7 +1336,6 @@ def raise_size(in_file, temp_file, out_file, in_json, limit_info, val, flags):
 
     exit_info = {
         'mode': m,
-        'bitrate': v_bitrate,
         'sizes': sizes
     }
 
@@ -1438,7 +1421,6 @@ def main():
         val = Values()
         val.calc_trim(in_file, in_json)
         val.calc_audio(in_json)
-        val.calc_video()
 
         flags = Settings()
         flags.get_verbosity()
