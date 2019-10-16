@@ -1255,6 +1255,8 @@ def limit_size(in_file, temp_file, out_file, in_json, val, flags):
             else:
                 sizes['last'] = sizes['temp']
                 sizes['temp'] = os.path.getsize(temp_file)
+                # No need to check against max_size
+                # Undershooting max_size ends limit process
                 if not sizes['out'] or sizes['temp'] < sizes['out']:
                     os.replace(temp_file, out_file)
                     sizes['out'] = sizes['temp']
@@ -1317,11 +1319,12 @@ def raise_size(in_file, temp_file, out_file, in_json, limit_info, val, flags):
             sizes['user'] = float(input("Output size in MB: "))
             sizes['last'] = sizes['temp']
             sizes['temp'] = int(sizes['user']*1024**2)
-            if sizes['temp'] < sizes['out']:
+            if sizes['out'] < sizes['temp'] <= max_size:
                 sizes['out'] = sizes['temp']
         else:
             sizes['last'] = sizes['temp']
             sizes['temp'] = os.path.getsize(temp_file)
+            # Check against max_size also necessary
             if sizes['out'] < sizes['temp'] <= max_size:
                 os.replace(temp_file, out_file)
                 sizes['out'] = sizes['temp']
