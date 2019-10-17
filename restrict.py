@@ -106,6 +106,7 @@ class Options:
 
 class Values:
     """Gathers information about output settings"""
+
     def __init__(self):
         """Initialize all properties"""
 
@@ -244,8 +245,8 @@ class Values:
             # Size ratio dictates overall bitrate change, but audio bitrate is const
             # (v+a) = (v_old+a) * (max/curr)
             # v = v_old * (max/curr) + (max/curr - 1) * a
-            a_offset = int((max_size/sizes['temp'] - 1) * self.audio['bitrate'])
-            new_rate = int(self.video['bitrate'] * max_size/sizes['temp'] + a_offset)
+            a_offset = int((max_size/sizes.temp - 1) * self.audio['bitrate'])
+            new_rate = int(self.video['bitrate'] * max_size/sizes.temp + a_offset)
             min_rate = int(self.video['bitrate'] * opts.min_bitrate_ratio)
             # Force min. decrease (% of last bitrate)
             if min_rate < new_rate < self.video['bitrate']:
@@ -364,6 +365,7 @@ class Values:
 
 class Settings:
     """Assembles FFmpeg settings"""
+
     def __init__(self):
         """Initialize all properties"""
         self.verbosity = []
@@ -531,6 +533,49 @@ class Settings:
             self.filter.extend(["-vf", f_scale])
         elif out_fps < in_fps:
             self.filter.extend(["-vf", f_fps])
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+class SizeData:
+    """Save and manage output file sizes"""
+
+    def __init__(self):
+        """Initialize all properties"""
+        self.temp = 0
+        self.out = 0
+        self.last = 0
+
+    def update(self, temp_file, out_file, enhance):
+        """Update all properties during the limiting process"""
+        if opts.debug:
+            try:
+                user = float(input("Output size in MB: "))
+            except ValueError:
+                # Use empty input as shortcut to end debug mode (simulate success)
+                user = opts.limit
+
+            self.last = self.temp
+            self.temp = int(user * 1024**2)
+        else:
+            self.last = self.temp
+            self.temp = os.path.getsize(temp_file)
+
+        if enhance:
+            if self.out < self.temp <= int(opts.limit * 1024**2):
+                self.out = self.temp
+                if not opts.debug:
+                    os.replace(temp_file, out_file)
+        else:
+            if not self.out or self.temp < self.out:
+                self.out = self.temp
+                if not opts.debug:
+                    os.replace(temp_file, out_file)
+
+    def skip_mode(self):
+        """Check for insufficient change"""
+        diff = abs((self.temp-self.last) / self.last)
+
+        return bool(diff < opts.skip_limit)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Functions
@@ -1023,9 +1068,9 @@ def print_size_info(sizes):
     if opts.color:
         print(color['size'], end="")
 
-    print(f"""  Curr. size: {sizes['temp']}
-  Last size:  {sizes['last']}
-  Best try:   {sizes['out']}""", end=color['reset']+"\n")
+    print(f"""  Curr. size: {sizes.temp}
+  Last size:  {sizes.last}
+  Best try:   {sizes.out}""", end=color['reset']+"\n")
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1205,17 +1250,10 @@ def call_ffmpeg(out_file, flags, mode):
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def limit_size(in_file, temp_file, out_file, in_json, val, flags):
+def limit_size(in_file, temp_file, out_file, in_json, val, flags, sizes):
     """Limit output size to be <=max_size"""
 
     max_size = int(opts.limit*1024**2)
-
-    sizes = {
-        'user': 0,
-        'temp': 0,
-        'last': 0,
-        'out': 0
-    }
 
     # VBR + qmax (1), VBR (2) and CBR (3)
     modes = 3
@@ -1245,57 +1283,30 @@ def limit_size(in_file, temp_file, out_file, in_json, val, flags):
 
             call_ffmpeg(temp_file, flags, m)
 
-            # Debug doesn't produce output; specify manually
-            if opts.debug:
-                sizes['user'] = float(input("Output size in MB: "))
-                sizes['last'] = sizes['temp']
-                sizes['temp'] = int(sizes['user']*1024**2)
-                if not sizes['out'] or sizes['temp'] < sizes['out']:
-                    sizes['out'] = sizes['temp']
-            else:
-                sizes['last'] = sizes['temp']
-                sizes['temp'] = os.path.getsize(temp_file)
-                # No need to check against max_size
-                # Undershooting max_size ends limit process
-                if not sizes['out'] or sizes['temp'] < sizes['out']:
-                    os.replace(temp_file, out_file)
-                    sizes['out'] = sizes['temp']
+            sizes.update(temp_file, out_file, enhance=False)
 
             if opts.verbosity >= 2:
                 print_size_info(sizes)
 
             # Skip remaining iters, if change too small (defaul: <1%)
-            if i > 1:
-                diff = abs((sizes['temp']-sizes['last']) / sizes['last'])
-                if diff < opts.skip_limit:
-                    break
-            if sizes['out'] <= max_size:
+            if i > 1 and sizes.skip_mode():
                 break
+            if sizes.out <= max_size:
+                return m
 
-        if sizes['out'] <= max_size:
-            break
-
-    exit_info = {
-        'mode': m,
-        'sizes': sizes
-    }
-
-    return exit_info
+    return m
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def raise_size(in_file, temp_file, out_file, in_json, limit_info, val, flags):
+def raise_size(in_file, temp_file, out_file, in_json, m, val, flags, sizes):
     """Raise output size to be >=min_size (and still <=max_size)"""
 
     max_size = int(opts.limit*1024**2)
     min_size = int(opts.limit*1024**2*opts.under)
 
-    sizes = limit_info['sizes']
-    m = limit_info['mode']
-
     for i in range(1, opts.iters+1):
-        if min_size <= sizes['out'] <= max_size:
-            break
+        if min_size <= sizes.out <= max_size:
+            return
 
         # don't re-initialize; adjust the last bitrate from limit_size()
         val.calc_video(sizes, init=False)
@@ -1314,35 +1325,14 @@ def raise_size(in_file, temp_file, out_file, in_json, limit_info, val, flags):
 
         call_ffmpeg(temp_file, flags, m)
 
-        # Debug doesn't produce output; specify manually
-        if opts.debug:
-            sizes['user'] = float(input("Output size in MB: "))
-            sizes['last'] = sizes['temp']
-            sizes['temp'] = int(sizes['user']*1024**2)
-            if sizes['out'] < sizes['temp'] <= max_size:
-                sizes['out'] = sizes['temp']
-        else:
-            sizes['last'] = sizes['temp']
-            sizes['temp'] = os.path.getsize(temp_file)
-            # Check against max_size also necessary
-            if sizes['out'] < sizes['temp'] <= max_size:
-                os.replace(temp_file, out_file)
-                sizes['out'] = sizes['temp']
+        sizes.update(temp_file, out_file, enhance=True)
 
         if opts.verbosity >= 2:
             print_size_info(sizes)
 
         # Skip remaining iters, if change too small (defaul: <1%)
-        diff = abs((sizes['temp']-sizes['last']) / sizes['last'])
-        if diff < opts.skip_limit:
-            break
-
-    exit_info = {
-        'mode': m,
-        'sizes': sizes
-    }
-
-    return exit_info
+        if sizes.skip_mode():
+            return
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1432,21 +1422,23 @@ def main():
         flags.get_subs(in_file)
         flags.get_audio(in_file, val)
 
+        sizes = SizeData()
+
         if opts.verbosity >= 2:
             print_file_info(flags, out_file)
 
-        limit_info = limit_size(in_file, opts.temp_name + ext, out_file, \
-                                in_json, val, flags)
-        if limit_info['sizes']['out'] > max_size:
+        mode = limit_size(in_file, opts.temp_name + ext, out_file, \
+                          in_json, val, flags, sizes)
+        if sizes.out > max_size:
             err(out_file)
             err("Error: Still too large!")
             size_fail = True
             clean()
             continue
 
-        raise_info = raise_size(in_file, opts.temp_name + ext, out_file, \
-                                in_json, limit_info, val, flags)
-        if raise_info['sizes']['out'] < min_size:
+        raise_size(in_file, opts.temp_name + ext, out_file, \
+                   in_json, mode, val, flags, sizes)
+        if sizes.out < min_size:
             err(out_file)
             err("Error: Still too small!")
             size_fail = True
