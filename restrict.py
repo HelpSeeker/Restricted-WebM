@@ -110,10 +110,38 @@ class Values:
     def __init__(self):
         """Initialize all properties"""
 
+        self.path = {}
         self.trim = {}
         self.audio = {}
         self.video = {}
         self.filter = {}
+
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    def calc_path(self, in_file):
+        """Gather all necessary infos regarding output paths"""
+
+        in_name = os.path.basename(in_file)
+        in_name = os.path.splitext(in_name)[0]
+        in_dir = os.path.dirname(in_file)
+
+        if in_name == opts.temp_name:
+            err(in_file)
+            err(f"Error! Input has reserved filename ('{opts.temp_name}')")
+            sys.exit(err_stat['dep'])
+
+        if out_image_subs(in_file):
+            self.path['ext'] = ".mkv"
+        else:
+            self.path['ext'] = ".webm"
+
+        out_name = in_name + self.path['ext']
+        out_dir = os.path.join(in_dir, opts.out_dir_name)
+        out_file = os.path.join(out_dir, out_name)
+
+        self.path['dir'] = out_dir
+        self.path['file'] = out_file
+        self.path['temp'] = opts.temp_name + self.path['ext']
 
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1036,7 +1064,7 @@ Misc.:
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def print_file_info(flags, output):
+def print_file_info(flags, val):
     """Print general (i.e. not adjusted during iterations) settings"""
 
     if opts.color:
@@ -1047,7 +1075,7 @@ def print_file_info(flags, output):
   Mapping:    {flags.map}
   Audio:      {flags.audio}
   Subtitles:  {flags.subtitle}
-  Output:     {output}""", end=color['reset']+"\n")
+  Output:     {val.path['file']}""", end=color['reset']+"\n")
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1074,27 +1102,12 @@ def print_size_info(sizes):
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def resolve_paths(in_file, ext):
-    """Handle output path"""
-
-    in_name = os.path.basename(in_file)
-    in_name = os.path.splitext(in_name)[0]
-    in_dir = os.path.dirname(in_file)
-
-    out_name = in_name + ext
-    out_dir = os.path.join(in_dir, opts.out_dir_name)
-    out_file = os.path.join(out_dir, out_name)
-
-    if in_name == opts.temp_name:
-        err(in_file)
-        err(f"Error! Input has reserved filename ('{opts.temp_name}')")
-        sys.exit(err_stat['dep'])
+def resolve_dir(out_dir):
+    """Change into output directory"""
 
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
     os.chdir(out_dir)
-
-    return out_file
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1250,7 +1263,7 @@ def call_ffmpeg(out_file, flags, mode):
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def limit_size(in_file, temp_file, out_file, in_json, val, flags, sizes):
+def limit_size(in_file, in_json, val, flags, sizes):
     """Limit output size to be <=max_size"""
 
     max_size = int(opts.limit*1024**2)
@@ -1281,9 +1294,9 @@ def limit_size(in_file, temp_file, out_file, in_json, val, flags, sizes):
             if opts.verbosity >= 2:
                 print_iter_info(flags)
 
-            call_ffmpeg(temp_file, flags, m)
+            call_ffmpeg(val.path['temp'], flags, m)
 
-            sizes.update(temp_file, out_file, enhance=False)
+            sizes.update(val.path['temp'], val.path['file'], enhance=False)
 
             if opts.verbosity >= 2:
                 print_size_info(sizes)
@@ -1298,7 +1311,7 @@ def limit_size(in_file, temp_file, out_file, in_json, val, flags, sizes):
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def raise_size(in_file, temp_file, out_file, in_json, m, val, flags, sizes):
+def raise_size(in_file, in_json, m, val, flags, sizes):
     """Raise output size to be >=min_size (and still <=max_size)"""
 
     max_size = int(opts.limit*1024**2)
@@ -1323,9 +1336,9 @@ def raise_size(in_file, temp_file, out_file, in_json, m, val, flags, sizes):
         if opts.verbosity >= 2:
             print_iter_info(flags)
 
-        call_ffmpeg(temp_file, flags, m)
+        call_ffmpeg(val.path['temp'], flags, m)
 
-        sizes.update(temp_file, out_file, enhance=True)
+        sizes.update(val.path['temp'], val.path['file'], enhance=True)
 
         if opts.verbosity >= 2:
             print_size_info(sizes)
@@ -1370,23 +1383,24 @@ def main():
         print("\n### Start conversion ###\n", end=color['reset']+"\n")
 
     for in_file in input_list:
-        ext = ".webm"
+        val = Values()
+        flags = Settings()
+        sizes = SizeData()
 
         if opts.verbosity >= 1:
             if opts.color:
                 print(color['file'], end="")
             print(f"Current file: {in_file}", end=color['reset']+"\n")
 
-        if out_image_subs(in_file):
-            if not opts.mkv_fallback:
-                err(in_file)
-                err("Error: Conversion of image-based subtitles not supported!")
-                clean()
-                continue
-            else:
-                ext = ".mkv"
+        val.calc_path(in_file)
 
-        out_file = resolve_paths(in_file, ext)
+        if val.path['ext'] == ".mkv" and not opts.mkv_fallback:
+            err(in_file)
+            err("Error: Conversion of image-based subtitles not supported!")
+            clean()
+            continue
+
+        resolve_dir(val.path['dir'])
 
         command = ["ffprobe", "-v", "error",
                    "-show_format", "-show_streams",
@@ -1411,35 +1425,29 @@ def main():
         except IndexError:
             pass
 
-        val = Values()
         val.calc_trim(in_file, in_json)
         val.calc_audio(in_json)
 
-        flags = Settings()
         flags.get_verbosity()
         flags.get_trim(in_file, val)
         flags.get_map(val)
         flags.get_subs(in_file)
         flags.get_audio(in_file, val)
 
-        sizes = SizeData()
-
         if opts.verbosity >= 2:
-            print_file_info(flags, out_file)
+            print_file_info(flags, val)
 
-        mode = limit_size(in_file, opts.temp_name + ext, out_file, \
-                          in_json, val, flags, sizes)
+        mode = limit_size(in_file, in_json, val, flags, sizes)
         if sizes.out > max_size:
-            err(out_file)
+            err(val.path['file'])
             err("Error: Still too large!")
             size_fail = True
             clean()
             continue
 
-        raise_size(in_file, opts.temp_name + ext, out_file, \
-                   in_json, mode, val, flags, sizes)
+        raise_size(in_file, in_json, mode, val, flags, sizes)
         if sizes.out < min_size:
-            err(out_file)
+            err(val.path['file'])
             err("Error: Still too small!")
             size_fail = True
 
