@@ -102,25 +102,20 @@ class Options:
     f_audio = False
     f_video = False
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 class Values:
     """Gathers information about output settings"""
 
     def __init__(self):
         """Initialize all properties"""
-
         self.path = {}
         self.trim = {}
         self.audio = {}
         self.video = {}
         self.filter = {}
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     def calc_path(self, in_file):
         """Gather all necessary infos regarding output paths"""
-
         in_name = os.path.basename(in_file)
         in_name = os.path.splitext(in_name)[0]
         in_dir = os.path.dirname(in_file)
@@ -143,11 +138,8 @@ class Values:
         self.path['file'] = out_file
         self.path['temp'] = opts.temp_name + self.path['ext']
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     def calc_trim(self, in_file, in_json):
         """Calculate values regarding trim settings"""
-
         try:
             dur = float(in_json['format']['duration'])
         except KeyError:
@@ -178,11 +170,8 @@ class Values:
         self.trim['in_dur'] = dur
         self.trim['out_dur'] = round(end - start, 3)
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     def calc_audio(self, in_json):
         """Calculate values regarding audio settings"""
-
         max_size = int(opts.limit*1024**2)
 
         self.audio['bitrate'] = 0
@@ -258,11 +247,8 @@ class Values:
         elif c_bitrate <= 16:
             self.audio['rate'] = 24000
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     def calc_video(self, sizes, init):
         """Calculate values regarding video settings"""
-
         max_size = int(opts.limit*1024**2)
 
         # Reset bitrate for each bitrate mode
@@ -287,11 +273,8 @@ class Values:
 
         self.video['bitrate'] = bitrate
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     def calc_filter(self, in_file, in_json):
         """Calculate values regarding (script) filter settings"""
-
         # Test for user set scale/fps filter
         if opts.f_user:
             user_scale = "scale" in opts.f_user
@@ -389,7 +372,6 @@ class Values:
             h = self.filter['in_height']
         self.filter['out_height'] = h
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 class Settings:
     """Assembles FFmpeg settings"""
@@ -404,21 +386,15 @@ class Settings:
         self.video = []
         self.filter = []
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     def get_verbosity(self):
         """Assemble FFmpeg settings regarding verbosity"""
-
         if opts.ffmpeg_verbosity == "stats":
             self.verbosity.extend(["-v", "error", "-stats"])
         else:
             self.verbosity.extend(["-v", opts.ffmpeg_verbosity])
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     def get_trim(self, in_file, val):
         """Assemble FFmpeg settings regarding input/trimming"""
-
         in_dur = val.trim['in_dur']
 
         if opts.global_start and opts.global_start < in_dur:
@@ -429,11 +405,8 @@ class Settings:
         if opts.global_end and opts.global_end <= in_dur:
             self.input.extend(["-t", str(val.trim['out_dur'])])
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     def get_map(self, val):
         """Assemble FFmpeg settings regarding mapping"""
-
         self.map.extend(["-map", "0:v"])
 
         for s in range(val.audio['streams']):
@@ -446,11 +419,8 @@ class Settings:
         if opts.subs:
             self.map.extend(["-map", "0:s?"])
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     def get_subs(self, in_file):
         """Assemble FFmpeg settings regarding subtitles"""
-
         if not opts.subs:
             return
 
@@ -461,11 +431,8 @@ class Settings:
         else:
             self.subtitle.extend(["-c:s", "webvtt"])
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     def get_audio(self, in_file, val):
         """Assemble FFmpeg settings regarding audio"""
-
         if not opts.audio:
             return
 
@@ -491,11 +458,8 @@ class Settings:
         if val.audio['rate'] < 44100:
             self.audio.extend(["-ar", str(val.audio['rate'])])
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     def get_video(self, mode, val):
         """Assemble FFmpeg settings regarding video"""
-
         # Function gets called several times for a file
         # Resetting necessary
         self.video = []
@@ -538,11 +502,8 @@ class Settings:
                                "-tile-rows", "2",
                                "-row-mt", "1"])
 
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
     def get_filters(self, val):
         """Assemble (script) filter string"""
-
         # Function gets called several times for a file
         # Resetting necessary
         self.filter = []
@@ -562,7 +523,6 @@ class Settings:
         elif out_fps < in_fps:
             self.filter.extend(["-vf", f_fps])
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 class SizeData:
     """Save and manage output file sizes"""
@@ -613,11 +573,9 @@ def err(*args, **kwargs):
     """Print to stderr"""
     print(*args, file=sys.stderr, **kwargs)
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def usage():
     """Print help text"""
-
     print(f"""Usage: {os.path.basename(sys.argv[0])} [OPTIONS] INPUT [INPUT]...
 
 Input:
@@ -676,11 +634,9 @@ All output will be saved in '{opts.out_dir_name}/'.
 For more information visit:
 https://github.com/HelpSeeker/Restricted-WebM-in-Bash/wiki""")
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def check_prereq():
     """check existence of required software"""
-
     reqs = ["ffmpeg", "ffprobe"]
 
     for r in reqs:
@@ -691,7 +647,6 @@ def check_prereq():
             err(f"Error: {r} not found!")
             sys.exit(err_stat['dep'])
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def parse_cli():
     """Parse command line arguments"""
@@ -830,7 +785,6 @@ def parse_cli():
             err(f"Invalid {opt} ('{arg}')!")
             sys.exit(err_stat['opt'])
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def check_options():
     """Check validity of command line options"""
@@ -926,7 +880,6 @@ def check_options():
         err(loglevels)
         sys.exit(err_stat['opt'])
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def check_filters():
     """Test user set filters"""
@@ -959,11 +912,9 @@ def check_filters():
     except subprocess.CalledProcessError:
         opts.f_audio = True
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def parse_time(in_time):
     """Parse input time syntax and check for validity"""
-
     # Check FFmpeg support
     # Easiest to just test it with ffmpeg (reasonable fast even for >1h durations)
     command = ["ffmpeg", "-v", "quiet",
@@ -989,11 +940,9 @@ def parse_time(in_time):
 
     return time_in_sec
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def print_options():
     """Print all settings for verbose output"""
-
     if opts.color:
         print(color['header'], end="")
     print("\n### Settings for the current session ###\n", end=color['reset']+"\n")
@@ -1062,11 +1011,9 @@ Misc.:
   FFmpeg verbosity level:      {opts.ffmpeg_verbosity}
   Debug mode:                  {opts.debug}""")
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def print_file_info(flags, val):
     """Print general (i.e. not adjusted during iterations) settings"""
-
     if opts.color:
         print(color['opts_file'], end="")
 
@@ -1077,22 +1024,18 @@ def print_file_info(flags, val):
   Subtitles:  {flags.subtitle}
   Output:     {val.path['file']}""", end=color['reset']+"\n")
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def print_iter_info(flags):
     """Print attempt (i.e. adjusted during iterations) settings"""
-
     if opts.color:
         print(color['opts_attempt'], end="")
 
     print(f"""  Video:      {flags.video}
   Filters:    {flags.filter}""", end=color['reset']+"\n")
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def print_size_info(sizes):
     """Print size information"""
-
     if opts.color:
         print(color['size'], end="")
 
@@ -1100,20 +1043,16 @@ def print_size_info(sizes):
   Last size:  {sizes.last}
   Best try:   {sizes.out}""", end=color['reset']+"\n")
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def resolve_dir(out_dir):
     """Change into output directory"""
-
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
     os.chdir(out_dir)
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def audio_copy(in_file, stream, out_rate):
     """Decide if input audio stream should be copied"""
-
     if opts.global_start or opts.f_audio or opts.no_copy:
         return False
 
@@ -1149,11 +1088,9 @@ def audio_copy(in_file, stream, out_rate):
 
     return False
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def opus_fallback(in_file, stream):
     """Test if audio fallback encoder is necessary"""
-
     if opts.force_stereo:
         return False
 
@@ -1171,11 +1108,9 @@ def opus_fallback(in_file, stream):
 
     return False
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def out_image_subs(in_file):
     """Test if output would include image-based subtitles"""
-
     if not opts.subs or opts.burn_subs:
         return False
 
@@ -1193,11 +1128,9 @@ def out_image_subs(in_file):
 
     return False
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def call_ffmpeg(out_file, flags, mode):
     """Execute FFmpeg (and assemble pass specific settings)"""
-
     v_raw = ["-c:v", "copy"]
     a_raw = ["-c:a", "copy"]
     f_raw = []
@@ -1261,11 +1194,9 @@ def call_ffmpeg(out_file, flags, mode):
         if mode == 3:
             break
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def limit_size(in_file, in_json, val, flags, sizes):
     """Limit output size to be <=max_size"""
-
     max_size = int(opts.limit*1024**2)
 
     # VBR + qmax (1), VBR (2) and CBR (3)
@@ -1309,11 +1240,9 @@ def limit_size(in_file, in_json, val, flags, sizes):
 
     return m
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def raise_size(in_file, in_json, m, val, flags, sizes):
     """Raise output size to be >=min_size (and still <=max_size)"""
-
     max_size = int(opts.limit*1024**2)
     min_size = int(opts.limit*1024**2*opts.under)
 
@@ -1347,11 +1276,9 @@ def raise_size(in_file, in_json, m, val, flags, sizes):
         if sizes.skip_mode():
             return
 
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 def clean():
     """Clean leftover file in the workspace"""
-
     for ext in [".webm", ".mkv"]:
         if os.path.exists(opts.temp_name + ext):
             os.remove(opts.temp_name + ext)
@@ -1452,6 +1379,7 @@ def main():
             size_fail = True
 
         clean()
+
 
 # Execute main function
 if __name__ == '__main__':
