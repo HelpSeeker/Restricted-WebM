@@ -6,16 +6,9 @@ import json
 import subprocess
 from fnmatch import fnmatch
 
-# ANSI escape codes for color output
-# See https://en.wikipedia.org/wiki/ANSI_escape_code
-color = {}
-color['file'] = '\033[0;35m'
-color['attempt'] = '\033[0;32m'
-color['header'] = '\033[1;36m'
-color['opts_file'] = color['file']
-color['opts_attempt'] = color['attempt']
-color['size'] = color['attempt']
-color['reset'] = '\033[0m'
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# Global constants
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Error codes
 # 1 -> missing required software
@@ -31,6 +24,29 @@ err_stat = {
     'int': 5
 }
 size_fail = False
+
+class Colors:
+    """Store ANSI escape codes for colorized output."""
+
+    # https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
+    FILE = '\033[35m'
+    ATTEMPT = '\033[32m'
+    HEADER = '\033[1;36m'
+    FILE_INFO = FILE
+    ATTEMPT_INFO = ATTEMPT
+    SIZE_INFO = ATTEMPT
+    RESET = '\033[0m'
+
+    def disable(self):
+        self.FILE = ''
+        self.ATTEMPT = ''
+        self.HEADER = ''
+        self.FILE_INFO = ''
+        self.ATTEMPT_INFO = ''
+        self.SIZE_INFO = ''
+        self.RESET = ''
+
+fgcolors = Colors()
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Classes
@@ -943,9 +959,8 @@ def parse_time(in_time):
 
 def print_options():
     """Print all settings for verbose output"""
-    if opts.color:
-        print(color['header'], end="")
-    print("\n### Settings for the current session ###\n", end=color['reset']+"\n")
+    print(fgcolors.HEADER, end="")
+    print("\n### Settings for the current session ###\n", end=fgcolors.RESET+"\n")
 
     print(f"""Paths:
   Temporary filename:          {opts.temp_name}
@@ -1014,34 +1029,28 @@ Misc.:
 
 def print_file_info(flags, val):
     """Print general (i.e. not adjusted during iterations) settings"""
-    if opts.color:
-        print(color['opts_file'], end="")
-
+    print(fgcolors.FILE_INFO, end="")
     print(f"""  Verbosity:  {flags.verbosity}
   Input/trim: {flags.input}
   Mapping:    {flags.map}
   Audio:      {flags.audio}
   Subtitles:  {flags.subtitle}
-  Output:     {val.path['file']}""", end=color['reset']+"\n")
+  Output:     {val.path['file']}""", end=fgcolors.RESET+"\n")
 
 
 def print_iter_info(flags):
     """Print attempt (i.e. adjusted during iterations) settings"""
-    if opts.color:
-        print(color['opts_attempt'], end="")
-
+    print(fgcolors.ATTEMPT_INFO, end="")
     print(f"""  Video:      {flags.video}
-  Filters:    {flags.filter}""", end=color['reset']+"\n")
+  Filters:    {flags.filter}""", end=fgcolors.RESET+"\n")
 
 
 def print_size_info(sizes):
     """Print size information"""
-    if opts.color:
-        print(color['size'], end="")
-
+    print(fgcolors.SIZE_INFO, end="")
     print(f"""  Curr. size: {sizes.temp}
   Last size:  {sizes.last}
-  Best try:   {sizes.out}""", end=color['reset']+"\n")
+  Best try:   {sizes.out}""", end=fgcolors.RESET+"\n")
 
 
 def resolve_dir(out_dir):
@@ -1217,11 +1226,10 @@ def limit_size(in_file, in_json, val, flags, sizes):
             flags.get_filters(val)
 
             if opts.verbosity >= 1:
-                if opts.color:
-                    print(color['attempt'], end="")
+                print(fgcolors.ATTEMPT, end="")
                 print(f"Mode: {m} (of 3) | Attempt {i} (of {opts.iters})", end=" | ")
                 print(f"Height: {val.filter['out_height']}", end=" | ")
-                print(f"FPS: {val.filter['out_fps']}", end=color['reset']+"\n")
+                print(f"FPS: {val.filter['out_fps']}", end=fgcolors.RESET+"\n")
             if opts.verbosity >= 2:
                 print_iter_info(flags)
 
@@ -1257,11 +1265,10 @@ def raise_size(in_file, in_json, m, val, flags, sizes):
         flags.get_filters(val)
 
         if opts.verbosity >= 1:
-            if opts.color:
-                print(color['attempt'], end="")
+            print(fgcolors.ATTEMPT, end="")
             print(f"Enhance Attempt: {i} (of {opts.iters})", end=" | ")
             print(f"Height: {val.filter['out_height']}", end=" | ")
-            print(f"FPS: {val.filter['out_fps']}", end=color['reset']+"\n")
+            print(f"FPS: {val.filter['out_fps']}", end=fgcolors.RESET+"\n")
         if opts.verbosity >= 2:
             print_iter_info(flags)
 
@@ -1295,8 +1302,9 @@ def main():
     global size_fail
 
     check_prereq()
-
     parse_cli()
+    if not opts.color:
+        fgcolors.disable()
     check_options()
     check_filters()
 
@@ -1305,9 +1313,8 @@ def main():
 
     if opts.verbosity >= 2:
         print_options()
-        if opts.color:
-            print(color['header'], end="")
-        print("\n### Start conversion ###\n", end=color['reset']+"\n")
+        print(fgcolors.HEADER, end="")
+        print("\n### Start conversion ###\n", end=fgcolors.RESET+"\n")
 
     for in_file in input_list:
         val = Values()
@@ -1315,9 +1322,8 @@ def main():
         sizes = SizeData()
 
         if opts.verbosity >= 1:
-            if opts.color:
-                print(color['file'], end="")
-            print(f"Current file: {in_file}", end=color['reset']+"\n")
+            print(fgcolors.FILE, end="")
+            print(f"Current file: {in_file}", end=fgcolors.RESET+"\n")
 
         val.calc_path(in_file)
 
@@ -1393,9 +1399,8 @@ if __name__ == '__main__':
         clean()
         sys.exit(err_stat['int'])
     if opts.verbosity >= 2:
-        if opts.color:
-            print(color['header'])
-        print("### Finished ###\n", end=color['reset']+"\n")
+        print(fgcolors.HEADER)
+        print("### Finished ###\n", end=fgcolors.RESET+"\n")
     if size_fail:
         sys.exit(err_stat['size'])
     sys.exit(0)
