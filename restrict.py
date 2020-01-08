@@ -10,20 +10,15 @@ from fnmatch import fnmatch
 # Global constants
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-# Error codes
-# 1 -> missing required software
-# 2 -> invalid user-specified option
-# 3 -> misc. runtime error
-# 4 -> not all input videos could be fit into the file size range
-# 5 -> termination was requested mid-way by the user (i.e. Ctrl+C)
-err_stat = {
-    'dep': 1,
-    'opt': 2,
-    'run': 3,
-    'size': 4,
-    'int': 5
-}
-size_fail = False
+class ExitCodes:
+    """Store exit codes for non-successful execution."""
+
+    DEP = 1         # missing required software
+    OPT = 2         # invalid user-specified option
+    RUN = 3         # misc. runtime error
+    SIZE = 4        # failed to fit all videos into size range
+    INT = 5         # early termination was requested by the user (i.e. Ctrl+C)
+
 
 class Colors:
     """Store ANSI escape codes for colorized output."""
@@ -51,7 +46,11 @@ class Colors:
         self.WARNING = ''
         self.RESET = ''
 
+
+# Create objects to hold constants
+status = ExitCodes()
 fgcolors = Colors()
+size_fail = False
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Classes
@@ -144,7 +143,7 @@ class Values:
         if in_name == opts.temp_name:
             err(in_file)
             err(f"Error! Input has reserved filename ('{opts.temp_name}')")
-            sys.exit(err_stat['dep'])
+            sys.exit(status.DEP)
 
         if out_image_subs(in_file):
             self.path['ext'] = ".mkv"
@@ -316,7 +315,7 @@ class Values:
             fps = float(fps[0])
         else:
             err("Unsuspected fps formatting in Values.calc_filter()!")
-            sys.exit(err_stat['run'])
+            sys.exit(status.RUN)
 
         # If user scale/fps filter -> test encode
         # Read the effect (i.e. changed resolution / frame rate) from output
@@ -345,7 +344,7 @@ class Values:
                 fps = float(fps[0])
             else:
                 err("Unsuspected fps formatting in Values.calc_filter()!")
-                sys.exit(err_stat['run'])
+                sys.exit(status.RUN)
 
         self.filter['in_height'] = h
         self.filter['out_height'] = h
@@ -679,7 +678,7 @@ def check_prereq():
                                 stderr=subprocess.DEVNULL)
         except FileNotFoundError:
             err(f"Error: {r} not found!")
-            sys.exit(err_stat['dep'])
+            sys.exit(status.DEP)
 
 
 def parse_cli():
@@ -716,7 +715,7 @@ def parse_cli():
                 arg = sys.argv[pos+1]
             except IndexError:
                 err(f"Missing value for '{opt}'!")
-                sys.exit(err_stat['opt'])
+                sys.exit(status.OPT)
 
             pos += 2
         else:
@@ -817,7 +816,7 @@ def parse_cli():
                     sys.exit()
         except ValueError:
             err(f"Invalid {opt} ('{arg}')!")
-            sys.exit(err_stat['opt'])
+            sys.exit(status.OPT)
 
 
 def check_options():
@@ -825,67 +824,67 @@ def check_options():
     # Check for input files
     if not input_list:
         err("No input files specified!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
 
     # Special integer checks
     if opts.passes not in (1, 2):
         err("Only 1 or 2 passes are supported!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
     elif opts.iters < 1:
         err("Script needs at least 1 iteration per mode!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
     elif opts.min_height <= 0:
         err("Min. height must be greater than 0!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
     elif opts.max_height and opts.max_height < opts.min_height:
         err("Max. height can't be less than min. height!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
     elif opts.threads <= 0:
         err("Thread count must be larger than 0!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
     elif opts.threads > 16:
         # Just a warning
         err("More than 16 threads are not recommended.", color=fgcolors.WARNING)
     elif opts.max_audio and opts.max_audio < 6:
         err("Max. audio channel bitrate must be greater than 6 Kbps!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
     elif opts.max_audio and opts.max_audio < opts.min_audio:
         err("Max. audio channel bitrate can't be less than min. audio channel bitrate!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
 
     # Special float checks
     if opts.limit <= 0:
         err("Target file size must be greater than 0!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
     elif opts.global_end and opts.global_end <= 0:
         err("End time must be greater than 0!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
     elif opts.global_start and opts.global_end and \
          opts.global_end <= opts.global_start:
         err("End time must be greater than start time!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
     elif opts.under > 1:
         err("Undershoot ratio can't be greater than 1!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
     elif opts.bpp_thresh <= 0:
         err("Bits per pixel threshold must be greater than 0!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
     elif opts.max_fps and opts.max_fps < 1:
         err("Max. frame rate can't be less than 1!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
     elif opts.max_fps and opts.max_fps < opts.min_fps:
         err("Max. frame rate can't be less than min. frame rate!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
 
     # Check for mutually exclusive flags
     if opts.force_copy and opts.no_copy:
         err("--force-copy and --no-copy are mutually exclusive!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
 
     # Misc. checks
     if opts.transparency and opts.pix_fmt != "yuva420p":
         err("Only yuva420p supports transparency!")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
 
     vp8_pix_fmt = ["yuv420p", "yuva420p"]
     vp9_pix_fmt = ["yuv420p", "yuva420p",
@@ -897,11 +896,11 @@ def check_options():
     if opts.v_codec == "libvpx" and opts.pix_fmt not in vp8_pix_fmt:
         err(f"'{opts.pix_fmt}' isn't supported by VP8!")
         err("See 'ffmpeg -h encoder=libvpx' for more infos.")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
     elif opts.v_codec == "libvpx-vp9" and opts.pix_fmt not in vp9_pix_fmt:
         err(f"'{opts.pix_fmt}' isn't supported by VP9!")
         err("See 'ffmpeg -h encoder=libvpx-vp9' for more infos.")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
 
     loglevels = ["quiet", "panic", "fatal",
                  "error", "warning", "info",
@@ -912,7 +911,7 @@ def check_options():
         err(f"'{opts.ffmpeg_verbosity}' isn't a supported FFmpeg verbosity level!")
         err("Supported levels:")
         err(loglevels)
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
 
 
 def check_filters():
@@ -960,7 +959,7 @@ def parse_time(in_time):
     except subprocess.CalledProcessError:
         err(f"Invalid time ('{in_time}')! For the supported syntax see:")
         err("https://ffmpeg.org/ffmpeg-utils.html#time-duration-syntax")
-        sys.exit(err_stat['opt'])
+        sys.exit(status.OPT)
 
     # Split into h, m and s
     in_time = in_time.split(":")
@@ -1405,9 +1404,9 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         err("User Interrupt!", color=fgcolors.WARNING)
         clean()
-        sys.exit(err_stat['int'])
+        sys.exit(status.INT)
 
     msg("\n### Finished ###\n", level=2, color=fgcolors.HEADER)
     if size_fail:
-        sys.exit(err_stat['size'])
+        sys.exit(status.SIZE)
     sys.exit(0)
