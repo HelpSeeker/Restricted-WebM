@@ -1314,26 +1314,26 @@ def main():
     print_options()
     msg("\n### Start conversion ###\n", level=2, color=fgcolors.HEADER)
 
-    for in_file in input_list:
-        val = Values(in_file)
+    for i in input_list:
+        val = Values(i)
         flags = Settings()
         sizes = SizeData()
 
-        msg(f"Current file: {in_file}", color=fgcolors.FILE)
+        msg(f"Current file: {i}", color=fgcolors.FILE)
 
         val.calc_path()
 
         if val.path['ext'] == "mkv" and not opts.mkv_fallback:
-            err(in_file)
+            err(i)
             err("Error: Conversion of image-based subtitles not supported!")
             clean()
             continue
 
-        resolve_path(in_file)
+        resolve_path(i)
 
         command = ["ffprobe", "-v", "error",
                    "-show_format", "-show_streams",
-                   "-print_format", "json", in_file]
+                   "-print_format", "json", i]
         in_json = subprocess.run(command, stdout=subprocess.PIPE).stdout
         in_json = json.loads(in_json)
 
@@ -1341,27 +1341,27 @@ def main():
         # First stream: video stream
         # Everything afterwards: non-video streams
         if not in_json['streams'][0]['codec_type'] == "video":
-            err(in_file)
+            err(i)
             err("Error: Unsupported stream order (first stream not video)!")
             clean()
             continue
         try:
             if in_json['streams'][1]['codec_type'] == "video":
-                err(in_file)
+                err(i)
                 err("Error: More than one video stream per file not supported!")
                 clean()
                 continue
         except IndexError:
             pass
 
-        val.calc_trim(in_file, in_json)
+        val.calc_trim(i, in_json)
         val.calc_audio(in_json)
 
         flags.get_verbosity()
-        flags.get_trim(in_file, val)
+        flags.get_trim(i, val)
         flags.get_map(val)
-        flags.get_subs(in_file)
-        flags.get_audio(in_file, val)
+        flags.get_subs(i)
+        flags.get_audio(i, val)
 
         msg(indent(dedent(f"""\
             Verbosity:  {flags.verbosity}
@@ -1372,7 +1372,7 @@ def main():
             Output:     {val.path['file']}"""), "  "),
             level=2, color=fgcolors.FILE_INFO)
 
-        mode = limit_size(in_file, in_json, val, flags, sizes)
+        mode = limit_size(i, in_json, val, flags, sizes)
         if sizes.out > max_size:
             err(val.path['file'], color=fgcolors.WARNING)
             err("Error: Still too large!", color=fgcolors.WARNING)
@@ -1380,7 +1380,7 @@ def main():
             clean()
             continue
 
-        raise_size(in_file, in_json, mode, val, flags, sizes)
+        raise_size(i, in_json, mode, val, flags, sizes)
         if sizes.out < min_size:
             err(val.path['file'], color=fgcolors.WARNING)
             err("Error: Still too small!", color=fgcolors.WARNING)
