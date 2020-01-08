@@ -117,7 +117,7 @@ class Options:
     a_factor = 5.5
     fallback_codec = "libvorbis"
     temp_name = "temp"
-    out_dir_name = "webm_done"
+    out_dir = "webm_done"
 
     # Don't touch
     f_audio = False
@@ -127,37 +127,23 @@ class Options:
 class Values:
     """Gathers information about output settings"""
 
-    def __init__(self):
+    def __init__(self, in_path):
         """Initialize all properties"""
+        self.input = in_path
         self.path = {}
         self.trim = {}
         self.audio = {}
         self.video = {}
         self.filter = {}
 
-    def calc_path(self, in_file):
+    def calc_path(self):
         """Gather all necessary infos regarding output paths"""
-        in_name = os.path.basename(in_file)
-        in_name = os.path.splitext(in_name)[0]
-        in_dir = os.path.dirname(in_file)
+        name = os.path.basename(self.input)
+        name = os.path.splitext(name)[0]
 
-        if in_name == opts.temp_name:
-            err(in_file)
-            err(f"Error! Input has reserved filename ('{opts.temp_name}')")
-            sys.exit(status.DEP)
-
-        if out_image_subs(in_file):
-            self.path['ext'] = ".mkv"
-        else:
-            self.path['ext'] = ".webm"
-
-        out_name = in_name + self.path['ext']
-        out_dir = os.path.join(in_dir, opts.out_dir_name)
-        out_file = os.path.join(out_dir, out_name)
-
-        self.path['dir'] = out_dir
-        self.path['file'] = out_file
-        self.path['temp'] = opts.temp_name + self.path['ext']
+        self.path['ext'] = f"{'mkv' if out_image_subs(self.input) else 'webm'}"
+        self.path['file'] = f"{name}.{self.path['ext']}"
+        self.path['temp'] = f"{opts.temp_name}.{self.path['ext']}"
 
     def calc_trim(self, in_file, in_json):
         """Calculate values regarding trim settings"""
@@ -663,8 +649,8 @@ def usage():
           --no-color                disable colorized output
           --debug                   only print ffmpeg commands
 
-        All output will be saved in '{opts.out_dir_name}/'.
-        '{opts.out_dir_name}/' is located in the same directory as the input.
+        All output will be saved in '{opts.out_dir}/'.
+        '{opts.out_dir}/' is located in the same directory as the input.
 
         For more information visit:
         https://github.com/HelpSeeker/Restricted-WebM-in-Bash/wiki"""))
@@ -827,6 +813,12 @@ def check_options():
     if not input_list:
         err("No input files specified!", color=fgcolors.WARNING)
         sys.exit(status.OPT)
+    for i in input_list:
+        name = os.path.basename(i)
+        name = os.path.splitext(name)[0]
+        if name == opts.temp_name:
+            err(f"{i} has reserved filename!")
+            sys.exit(status.DEP)
 
     # Special integer checks
     if opts.passes not in (1, 2):
@@ -984,7 +976,7 @@ def print_options():
     msg(dedent(f"""\
         Paths:
           Temporary filename:          {opts.temp_name}
-          Destination directory name:  {opts.out_dir_name}
+          Destination directory name:  {opts.out_dir}
 
         Size:
           Max. size (MB):              {opts.limit}
@@ -1047,8 +1039,9 @@ def print_options():
           Debug mode:                  {opts.debug}"""), level=2)
 
 
-def resolve_dir(out_dir):
+def resolve_path(in_path):
     """Change into output directory"""
+    out_dir = os.path.join(os.path.dirname(in_path), opts.out_dir)
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
     os.chdir(out_dir)
@@ -1322,21 +1315,21 @@ def main():
     msg("\n### Start conversion ###\n", level=2, color=fgcolors.HEADER)
 
     for in_file in input_list:
-        val = Values()
+        val = Values(in_file)
         flags = Settings()
         sizes = SizeData()
 
         msg(f"Current file: {in_file}", color=fgcolors.FILE)
 
-        val.calc_path(in_file)
+        val.calc_path()
 
-        if val.path['ext'] == ".mkv" and not opts.mkv_fallback:
+        if val.path['ext'] == "mkv" and not opts.mkv_fallback:
             err(in_file)
             err("Error: Conversion of image-based subtitles not supported!")
             clean()
             continue
 
-        resolve_dir(val.path['dir'])
+        resolve_path(in_file)
 
         command = ["ffprobe", "-v", "error",
                    "-show_format", "-show_streams",
