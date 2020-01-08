@@ -5,6 +5,7 @@ import sys
 import json
 import subprocess
 from fnmatch import fnmatch
+from textwrap import dedent, indent
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Global constants
@@ -609,63 +610,64 @@ def msg(*args, level=1, color=fgcolors.RESET, **kwargs):
 
 def usage():
     """Print help text"""
-    print(f"""Usage: {os.path.basename(sys.argv[0])} [OPTIONS] INPUT [INPUT]...
+    print(dedent(f"""\
+        Usage: {os.path.basename(sys.argv[0])} [OPTIONS] INPUT [INPUT]...
 
-Input:
-  Absolute or relative path to a video/image
+        Input:
+          Absolute or relative path to a video/image
 
-Common options:
-  -h,  --help               show help
-  -q,  --quiet              suppress non-error output
-  -v,  --verbose            print verbose information
-  -a,  --audio              enable audio output
-  -s,  --size SIZE          limit max. output file size in MB (def: {opts.limit})
-  -f,  --filters FILTERS    use custom ffmpeg filters
-  -p,  --passes {{1,2}}       specify number of passes (def: {opts.passes})
-  -u,  --undershoot RATIO   specify undershoot ratio (def: {opts.under})
-  -i,  --iterations ITER    iterations for each bitrate mode (def: {opts.iters})
-  -t,  --threads THREADS    enable multithreading
-  -ss, --start TIME         start encoding at the specified time
-  -to, --end TIME           end encoding at the specified time
-  -fs, --force-stereo       force stereo audio output
-  -bf, --basic-format       restrict output to one video/audio stream
+        Common options:
+          -h,  --help               show help
+          -q,  --quiet              suppress non-error output
+          -v,  --verbose            print verbose information
+          -a,  --audio              enable audio output
+          -s,  --size SIZE          limit max. output file size in MB (def: {opts.limit})
+          -f,  --filters FILTERS    use custom ffmpeg filters
+          -p,  --passes {{1,2}}       specify number of passes (def: {opts.passes})
+          -u,  --undershoot RATIO   specify undershoot ratio (def: {opts.under})
+          -i,  --iterations ITER    iterations for each bitrate mode (def: {opts.iters})
+          -t,  --threads THREADS    enable multithreading
+          -ss, --start TIME         start encoding at the specified time
+          -to, --end TIME           end encoding at the specified time
+          -fs, --force-stereo       force stereo audio output
+          -bf, --basic-format       restrict output to one video/audio stream
 
-Subtitle options:
-  --subtitles               enable subtitle output
-  --mkv-fallback            allow usage of MKV for image-based subtitles
-  --burn-subs               discard soft subtitles after hardsubbing
+        Subtitle options:
+          --subtitles               enable subtitle output
+          --mkv-fallback            allow usage of MKV for image-based subtitles
+          --burn-subs               discard soft subtitles after hardsubbing
 
-Advanced video options:
-  --vp9                     use VP9 instead of VP8
-  --crf                     use constrained quality instead of VBR
-  --no-qmax                 skip the first bitrate mode (VBR with qmax)
-  --no-cbr                  skip the last bitrate mode (CBR with frame dropping)
-  --bpp BPP                 set custom bpp threshold (def: {opts.bpp_thresh})
-  --transparency            preserve input transparency
-  --pix-fmt FORMAT          choose color space (def: {opts.pix_fmt})
-  --min-height HEIGHT       force min. output height (def: {opts.min_height})
-  --max-height HEIGHT       force max. output height
-  --min-fps FPS             force min. frame rate (def: {opts.min_fps})
-  --max-fps FPS             force max. frame rate
+        Advanced video options:
+          --vp9                     use VP9 instead of VP8
+          --crf                     use constrained quality instead of VBR
+          --no-qmax                 skip the first bitrate mode (VBR with qmax)
+          --no-cbr                  skip the last bitrate mode (CBR with frame dropping)
+          --bpp BPP                 set custom bpp threshold (def: {opts.bpp_thresh})
+          --transparency            preserve input transparency
+          --pix-fmt FORMAT          choose color space (def: {opts.pix_fmt})
+          --min-height HEIGHT       force min. output height (def: {opts.min_height})
+          --max-height HEIGHT       force max. output height
+          --min-fps FPS             force min. frame rate (def: {opts.min_fps})
+          --max-fps FPS             force max. frame rate
 
-Advanced audio options:
-  --opus                    use and allow Opus as audio codec
-  --no-copy                 disable stream copying
-  --force-copy              force-copy compatible (!) audio streams
-  --min-audio RATE          force min. channel bitrate in Kbps (def: {opts.min_audio})
-  --max-audio RATE          force max. channel bitrate in Kbps
+        Advanced audio options:
+          --opus                    use and allow Opus as audio codec
+          --no-copy                 disable stream copying
+          --force-copy              force-copy compatible (!) audio streams
+          --min-audio RATE          force min. channel bitrate in Kbps (def: {opts.min_audio})
+          --max-audio RATE          force max. channel bitrate in Kbps
 
-Misc. options:
-  --no-filter-firstpass     disable user filters during the first pass
-  --ffmpeg-verbosity LEVEL  change FFmpeg command verbosity (def: {opts.ffmpeg_verbosity})
-  --no-color                disable colorized output
-  --debug                   only print ffmpeg commands
+        Misc. options:
+          --no-filter-firstpass     disable user filters during the first pass
+          --ffmpeg-verbosity LEVEL  change FFmpeg command verbosity (def: {opts.ffmpeg_verbosity})
+          --no-color                disable colorized output
+          --debug                   only print ffmpeg commands
 
-All output will be saved in '{opts.out_dir_name}/'.
-'{opts.out_dir_name}/' is located in the same directory as the input.
+        All output will be saved in '{opts.out_dir_name}/'.
+        '{opts.out_dir_name}/' is located in the same directory as the input.
 
-For more information visit:
-https://github.com/HelpSeeker/Restricted-WebM-in-Bash/wiki""")
+        For more information visit:
+        https://github.com/HelpSeeker/Restricted-WebM-in-Bash/wiki"""))
 
 
 def check_prereq():
@@ -823,7 +825,7 @@ def check_options():
     """Check validity of command line options"""
     # Check for input files
     if not input_list:
-        err("No input files specified!")
+        err("No input files specified!", color=fgcolors.WARNING)
         sys.exit(status.OPT)
 
     # Special integer checks
@@ -979,91 +981,70 @@ def print_options():
     msg("\n### Settings for the current session ###\n",
         level=2, color=fgcolors.HEADER)
 
-    msg(f"""Paths:
-  Temporary filename:          {opts.temp_name}
-  Destination directory name:  {opts.out_dir_name}
+    msg(dedent(f"""\
+        Paths:
+          Temporary filename:          {opts.temp_name}
+          Destination directory name:  {opts.out_dir_name}
 
-Size:
-  Max. size (MB):              {opts.limit}
-  Undershoot ratio:            {opts.under}
-  Max. size (Bytes):           {int(opts.limit*1024**2)}
-  Min. size (Bytes):           {int(opts.limit*1024**2*opts.under)}
+        Size:
+          Max. size (MB):              {opts.limit}
+          Undershoot ratio:            {opts.under}
+          Max. size (Bytes):           {int(opts.limit*1024**2)}
+          Min. size (Bytes):           {int(opts.limit*1024**2*opts.under)}
 
-Trimming:
-  Start time (sec):            {opts.global_start if opts.global_start else "-"}
-  End time (sec):              {opts.global_end if opts.global_end else "-"}
+        Trimming:
+          Start time (sec):            {opts.global_start if opts.global_start else "-"}
+          End time (sec):              {opts.global_end if opts.global_end else "-"}
 
-Video:
-  Encoder:                     {opts.v_codec}
-  Passes:                      {opts.passes}
-  Threads:                     {opts.threads}
-  Color space:                 {opts.pix_fmt}
-  Use CQ instead of VBR:       {opts.crf}
-  CRF:                         {opts.crf_value}
-  qmax:                        {opts.min_quality}
-  Fallback bitrate (Kbps):     {opts.fallback_bitrate}
-  Skip VBR with min. quality:  {opts.no_qmax}
-  Skip CBR:                    {opts.no_cbr}
-  Iterations/bitrate mode:     {opts.iters}
-  Mode skip threshold:         {opts.skip_limit}
-  Min. bitrate ratio:          {opts.min_bitrate_ratio}
+        Video:
+          Encoder:                     {opts.v_codec}
+          Passes:                      {opts.passes}
+          Threads:                     {opts.threads}
+          Color space:                 {opts.pix_fmt}
+          Use CQ instead of VBR:       {opts.crf}
+          CRF:                         {opts.crf_value}
+          qmax:                        {opts.min_quality}
+          Fallback bitrate (Kbps):     {opts.fallback_bitrate}
+          Skip VBR with min. quality:  {opts.no_qmax}
+          Skip CBR:                    {opts.no_cbr}
+          Iterations/bitrate mode:     {opts.iters}
+          Mode skip threshold:         {opts.skip_limit}
+          Min. bitrate ratio:          {opts.min_bitrate_ratio}
 
-Audio:
-  Audio output:                {opts.audio}
-  Encoder:                     {opts.a_codec}
-  Fallback encoder:            {opts.fallback_codec}
-  Force stereo:                {opts.force_stereo}
-  Min. channel bitrate (Kbps): {opts.min_audio}
-  Max. channel bitrate (Kbps): {opts.max_audio if opts.max_audio else "-"}
-  Stream copying disabled:     {opts.no_copy}
-  Ignore bitrate for copying:  {opts.force_copy}
-  Bitrate test duration (sec): {opts.audio_test_dur}
-  Audio factor:                {opts.a_factor}
+        Audio:
+          Audio output:                {opts.audio}
+          Encoder:                     {opts.a_codec}
+          Fallback encoder:            {opts.fallback_codec}
+          Force stereo:                {opts.force_stereo}
+          Min. channel bitrate (Kbps): {opts.min_audio}
+          Max. channel bitrate (Kbps): {opts.max_audio if opts.max_audio else "-"}
+          Stream copying disabled:     {opts.no_copy}
+          Ignore bitrate for copying:  {opts.force_copy}
+          Bitrate test duration (sec): {opts.audio_test_dur}
+          Audio factor:                {opts.a_factor}
 
-Subtitles:
-  Subtitle support:            {opts.subs}
-  MKV as fallback:             {opts.mkv_fallback}
-  Discard after hardsubbing:   {opts.burn_subs}
+        Subtitles:
+          Subtitle support:            {opts.subs}
+          MKV as fallback:             {opts.mkv_fallback}
+          Discard after hardsubbing:   {opts.burn_subs}
 
-Filters:
-  User filters:                {opts.f_user}
-  Contains video filters:      {opts.f_video}
-  Contains audio filters:      {opts.f_audio}
-  Omit during 1st pass:        {opts.no_filter_firstpass}
-  BPP threshold:               {opts.bpp_thresh}
-  Min. height threshold:       {opts.min_height}
-  Max. height threshold:       {opts.max_height if opts.max_height else "-"}
-  Height reduction step:       {opts.height_reduction}
-  Min. frame rate threshold:   {opts.min_fps}
-  Max. frame rate threshold:   {opts.max_fps if opts.max_fps else "-"}
-  Possible frame rates:        {opts.fps_list}
+        Filters:
+          User filters:                {opts.f_user}
+          Contains video filters:      {opts.f_video}
+          Contains audio filters:      {opts.f_audio}
+          Omit during 1st pass:        {opts.no_filter_firstpass}
+          BPP threshold:               {opts.bpp_thresh}
+          Min. height threshold:       {opts.min_height}
+          Max. height threshold:       {opts.max_height if opts.max_height else "-"}
+          Height reduction step:       {opts.height_reduction}
+          Min. frame rate threshold:   {opts.min_fps}
+          Max. frame rate threshold:   {opts.max_fps if opts.max_fps else "-"}
+          Possible frame rates:        {opts.fps_list}
 
-Misc.:
-  Only 1 video/audio stream:   {opts.basic_format}
-  FFmpeg verbosity level:      {opts.ffmpeg_verbosity}
-  Debug mode:                  {opts.debug}""", level=2)
-
-
-def print_file_info(flags, val):
-    """Print general (i.e. not adjusted during iterations) settings"""
-    msg(f"""  Verbosity:  {flags.verbosity}
-  Input/trim: {flags.input}
-  Mapping:    {flags.map}
-  Audio:      {flags.audio}
-  Subtitles:  {flags.subtitle}
-  Output:     {val.path['file']}""", level=2, color=fgcolors.FILE_INFO)
-
-
-def print_iter_info(flags):
-    """Print attempt (i.e. adjusted during iterations) settings"""
-    msg(f"""  Video:      {flags.video}
-  Filters:    {flags.filter}""", level=2, color=fgcolors.ATTEMPT_INFO)
-
-def print_size_info(sizes):
-    """Print size information"""
-    msg(f"""  Curr. size: {sizes.temp}
-  Last size:  {sizes.last}
-  Best try:   {sizes.out}""", level=2, color=fgcolors.SIZE_INFO)
+        Misc.:
+          Only 1 video/audio stream:   {opts.basic_format}
+          FFmpeg verbosity level:      {opts.ffmpeg_verbosity}
+          Debug mode:                  {opts.debug}"""), level=2)
 
 
 def resolve_dir(out_dir):
@@ -1248,13 +1229,20 @@ def limit_size(in_file, in_json, val, flags, sizes):
             msg(f"Mode: {m} (of 3) | Attempt {i} (of {opts.iters}) | "
                 f"Height: {val.filter['out_height']} | "
                 f"FPS: {val.filter['out_fps']}", color=fgcolors.ATTEMPT)
-            print_iter_info(flags)
+            msg(indent(dedent(f"""\
+                Video:      {flags.video}
+                Filters:    {flags.filter}"""), "  "),
+                level=2, color=fgcolors.ATTEMPT_INFO)
 
             call_ffmpeg(val.path['temp'], flags, m)
 
             sizes.update(val.path['temp'], val.path['file'], enhance=False)
 
-            print_size_info(sizes)
+            msg(indent(dedent(f"""\
+                Curr. size: {sizes.temp}
+                Last size:  {sizes.last}
+                Best try:   {sizes.out}"""), "  "),
+                level=2, color=fgcolors.SIZE_INFO)
 
             # Skip remaining iters, if change too small (defaul: <1%)
             if i > 1 and sizes.skip_mode():
@@ -1283,13 +1271,20 @@ def raise_size(in_file, in_json, m, val, flags, sizes):
         msg(f"Enhance Attempt: {i} (of {opts.iters}) | "
             f"Height: {val.filter['out_height']} | "
             f"FPS: {val.filter['out_fps']}", color=fgcolors.ATTEMPT)
-        print_iter_info(flags)
+        msg(indent(dedent(f"""\
+            Video:      {flags.video}
+            Filters:    {flags.filter}"""), "  "),
+            level=2, color=fgcolors.ATTEMPT_INFO)
 
         call_ffmpeg(val.path['temp'], flags, m)
 
         sizes.update(val.path['temp'], val.path['file'], enhance=True)
 
-        print_size_info(sizes)
+        msg(indent(dedent(f"""\
+            Curr. size: {sizes.temp}
+            Last size:  {sizes.last}
+            Best try:   {sizes.out}"""), "  "),
+            level=2, color=fgcolors.SIZE_INFO)
 
         # Skip remaining iters, if change too small (defaul: <1%)
         if sizes.skip_mode():
@@ -1375,7 +1370,14 @@ def main():
         flags.get_subs(in_file)
         flags.get_audio(in_file, val)
 
-        print_file_info(flags, val)
+        msg(indent(dedent(f"""\
+            Verbosity:  {flags.verbosity}
+            Input/trim: {flags.input}
+            Mapping:    {flags.map}
+            Audio:      {flags.audio}
+            Subtitles:  {flags.subtitle}
+            Output:     {val.path['file']}"""), "  "),
+            level=2, color=fgcolors.FILE_INFO)
 
         mode = limit_size(in_file, in_json, val, flags, sizes)
         if sizes.out > max_size:
@@ -1402,7 +1404,7 @@ if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        err("User Interrupt!", color=fgcolors.WARNING)
+        err("\nUser Interrupt!", color=fgcolors.WARNING)
         clean()
         sys.exit(status.INT)
 
