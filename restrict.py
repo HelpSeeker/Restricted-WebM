@@ -29,21 +29,26 @@ class Colors:
     """Store ANSI escape codes for colorized output."""
 
     # https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
-    FILE = '\033[35m'
-    ATTEMPT = '\033[32m'
-    HEADER = '\033[1;36m'
+    FILE = '\033[35m'           # Magenta
+    ATTEMPT = '\033[32m'        # Green
+    HEADER = '\033[1;36m'       # Cyan (bold)
     FILE_INFO = FILE
     ATTEMPT_INFO = ATTEMPT
     SIZE_INFO = ATTEMPT
+    ERROR = '\033[31m'          # Red
+    WARNING = '\033[33m'        # Yellow
     RESET = '\033[0m'
 
     def disable(self):
+        """Disable colorized output by removing escape codes."""
         self.FILE = ''
         self.ATTEMPT = ''
         self.HEADER = ''
         self.FILE_INFO = ''
         self.ATTEMPT_INFO = ''
         self.SIZE_INFO = ''
+        self.ERROR = ''
+        self.WARNING = ''
         self.RESET = ''
 
 fgcolors = Colors()
@@ -585,9 +590,22 @@ class SizeData:
 # Functions
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-def err(*args, **kwargs):
-    """Print to stderr"""
-    print(*args, file=sys.stderr, **kwargs)
+def err(*args, level=0, color=fgcolors.ERROR, **kwargs):
+    """Print to stderr."""
+    if level <= opts.verbosity:
+        sys.stderr.write(color)
+        print(*args, file=sys.stderr, **kwargs)
+    sys.stderr.write(fgcolors.RESET)
+    sys.stdout.write(fgcolors.RESET)
+
+
+def msg(*args, level=1, color=fgcolors.RESET, **kwargs):
+    """Print to stdout based on verbosity level."""
+    if level <= opts.verbosity:
+        sys.stdout.write(color)
+        print(*args, **kwargs)
+    sys.stderr.write(fgcolors.RESET)
+    sys.stdout.write(fgcolors.RESET)
 
 
 def usage():
@@ -827,7 +845,7 @@ def check_options():
         sys.exit(err_stat['opt'])
     elif opts.threads > 16:
         # Just a warning
-        err("More than 16 threads are not recommended.")
+        err("More than 16 threads are not recommended.", color=fgcolors.WARNING)
     elif opts.max_audio and opts.max_audio < 6:
         err("Max. audio channel bitrate must be greater than 6 Kbps!")
         sys.exit(err_stat['opt'])
@@ -959,10 +977,10 @@ def parse_time(in_time):
 
 def print_options():
     """Print all settings for verbose output"""
-    print(fgcolors.HEADER, end="")
-    print("\n### Settings for the current session ###\n", end=fgcolors.RESET+"\n")
+    msg("\n### Settings for the current session ###\n",
+        level=2, color=fgcolors.HEADER)
 
-    print(f"""Paths:
+    msg(f"""Paths:
   Temporary filename:          {opts.temp_name}
   Destination directory name:  {opts.out_dir_name}
 
@@ -1024,33 +1042,29 @@ Filters:
 Misc.:
   Only 1 video/audio stream:   {opts.basic_format}
   FFmpeg verbosity level:      {opts.ffmpeg_verbosity}
-  Debug mode:                  {opts.debug}""")
+  Debug mode:                  {opts.debug}""", level=2)
 
 
 def print_file_info(flags, val):
     """Print general (i.e. not adjusted during iterations) settings"""
-    print(fgcolors.FILE_INFO, end="")
-    print(f"""  Verbosity:  {flags.verbosity}
+    msg(f"""  Verbosity:  {flags.verbosity}
   Input/trim: {flags.input}
   Mapping:    {flags.map}
   Audio:      {flags.audio}
   Subtitles:  {flags.subtitle}
-  Output:     {val.path['file']}""", end=fgcolors.RESET+"\n")
+  Output:     {val.path['file']}""", level=2, color=fgcolors.FILE_INFO)
 
 
 def print_iter_info(flags):
     """Print attempt (i.e. adjusted during iterations) settings"""
-    print(fgcolors.ATTEMPT_INFO, end="")
-    print(f"""  Video:      {flags.video}
-  Filters:    {flags.filter}""", end=fgcolors.RESET+"\n")
-
+    msg(f"""  Video:      {flags.video}
+  Filters:    {flags.filter}""", level=2, color=fgcolors.ATTEMPT_INFO)
 
 def print_size_info(sizes):
     """Print size information"""
-    print(fgcolors.SIZE_INFO, end="")
-    print(f"""  Curr. size: {sizes.temp}
+    msg(f"""  Curr. size: {sizes.temp}
   Last size:  {sizes.last}
-  Best try:   {sizes.out}""", end=fgcolors.RESET+"\n")
+  Best try:   {sizes.out}""", level=2, color=fgcolors.SIZE_INFO)
 
 
 def resolve_dir(out_dir):
@@ -1150,6 +1164,13 @@ def call_ffmpeg(out_file, flags, mode):
     if opts.f_user:
         f_raw = ["-filter_complex", opts.f_user]
 
+    # I give up!
+    # Colors are reset for both stderr and stdout and yet FFmpeg prints
+    # in color, unless we print another newline before it. And it has to
+    # be a newline, because anything else gets simply swalled for some
+    # mysterious reason
+    print()
+
     for p in range(1, opts.passes+1):
         if opts.passes == 1 or mode == 3:
             p_flags = ["-cpu-used", "0", out_file]
@@ -1225,20 +1246,16 @@ def limit_size(in_file, in_json, val, flags, sizes):
             flags.get_video(m, val)
             flags.get_filters(val)
 
-            if opts.verbosity >= 1:
-                print(fgcolors.ATTEMPT, end="")
-                print(f"Mode: {m} (of 3) | Attempt {i} (of {opts.iters})", end=" | ")
-                print(f"Height: {val.filter['out_height']}", end=" | ")
-                print(f"FPS: {val.filter['out_fps']}", end=fgcolors.RESET+"\n")
-            if opts.verbosity >= 2:
-                print_iter_info(flags)
+            msg(f"Mode: {m} (of 3) | Attempt {i} (of {opts.iters}) | "
+                f"Height: {val.filter['out_height']} | "
+                f"FPS: {val.filter['out_fps']}", color=fgcolors.ATTEMPT)
+            print_iter_info(flags)
 
             call_ffmpeg(val.path['temp'], flags, m)
 
             sizes.update(val.path['temp'], val.path['file'], enhance=False)
 
-            if opts.verbosity >= 2:
-                print_size_info(sizes)
+            print_size_info(sizes)
 
             # Skip remaining iters, if change too small (defaul: <1%)
             if i > 1 and sizes.skip_mode():
@@ -1264,20 +1281,16 @@ def raise_size(in_file, in_json, m, val, flags, sizes):
         flags.get_video(m, val)
         flags.get_filters(val)
 
-        if opts.verbosity >= 1:
-            print(fgcolors.ATTEMPT, end="")
-            print(f"Enhance Attempt: {i} (of {opts.iters})", end=" | ")
-            print(f"Height: {val.filter['out_height']}", end=" | ")
-            print(f"FPS: {val.filter['out_fps']}", end=fgcolors.RESET+"\n")
-        if opts.verbosity >= 2:
-            print_iter_info(flags)
+        msg(f"Enhance Attempt: {i} (of {opts.iters}) | "
+            f"Height: {val.filter['out_height']} | "
+            f"FPS: {val.filter['out_fps']}", color=fgcolors.ATTEMPT)
+        print_iter_info(flags)
 
         call_ffmpeg(val.path['temp'], flags, m)
 
         sizes.update(val.path['temp'], val.path['file'], enhance=True)
 
-        if opts.verbosity >= 2:
-            print_size_info(sizes)
+        print_size_info(sizes)
 
         # Skip remaining iters, if change too small (defaul: <1%)
         if sizes.skip_mode():
@@ -1311,19 +1324,15 @@ def main():
     max_size = int(opts.limit*1024**2)
     min_size = int(opts.limit*1024**2*opts.under)
 
-    if opts.verbosity >= 2:
-        print_options()
-        print(fgcolors.HEADER, end="")
-        print("\n### Start conversion ###\n", end=fgcolors.RESET+"\n")
+    print_options()
+    msg("\n### Start conversion ###\n", level=2, color=fgcolors.HEADER)
 
     for in_file in input_list:
         val = Values()
         flags = Settings()
         sizes = SizeData()
 
-        if opts.verbosity >= 1:
-            print(fgcolors.FILE, end="")
-            print(f"Current file: {in_file}", end=fgcolors.RESET+"\n")
+        msg(f"Current file: {in_file}", color=fgcolors.FILE)
 
         val.calc_path(in_file)
 
@@ -1367,21 +1376,20 @@ def main():
         flags.get_subs(in_file)
         flags.get_audio(in_file, val)
 
-        if opts.verbosity >= 2:
-            print_file_info(flags, val)
+        print_file_info(flags, val)
 
         mode = limit_size(in_file, in_json, val, flags, sizes)
         if sizes.out > max_size:
-            err(val.path['file'])
-            err("Error: Still too large!")
+            err(val.path['file'], color=fgcolors.WARNING)
+            err("Error: Still too large!", color=fgcolors.WARNING)
             size_fail = True
             clean()
             continue
 
         raise_size(in_file, in_json, mode, val, flags, sizes)
         if sizes.out < min_size:
-            err(val.path['file'])
-            err("Error: Still too small!")
+            err(val.path['file'], color=fgcolors.WARNING)
+            err("Error: Still too small!", color=fgcolors.WARNING)
             size_fail = True
 
         clean()
@@ -1395,12 +1403,11 @@ if __name__ == '__main__':
     try:
         main()
     except KeyboardInterrupt:
-        err("User Interrupt!")
+        err("User Interrupt!", color=fgcolors.WARNING)
         clean()
         sys.exit(err_stat['int'])
-    if opts.verbosity >= 2:
-        print(fgcolors.HEADER)
-        print("### Finished ###\n", end=fgcolors.RESET+"\n")
+
+    msg("\n### Finished ###\n", level=2, color=fgcolors.HEADER)
     if size_fail:
         sys.exit(err_stat['size'])
     sys.exit(0)
