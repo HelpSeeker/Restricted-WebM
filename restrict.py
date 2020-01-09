@@ -109,7 +109,7 @@ class Options:
     fps_list = [60, 30, 25, 24, 22, 20, 18, 16, 14, 12, 10, 8, 6, 4, 2, 1]
     audio_test_dur = 60      # 0 for whole stream -> exact bitrate
     fallback_bitrate = 1     # Must be >0
-    height_reduction = 10
+    height_reduction = -10   # Must be <0
     min_quality = 50
     crf_value = 10
     min_bitrate_ratio = 0.9
@@ -122,356 +122,297 @@ class Options:
     # Don't touch
     f_audio = False
     f_video = False
+    user_scale = False
+    user_fps = False
 
 
-class Values:
+class FileInfo:
     """Gathers information about output settings"""
 
     def __init__(self, in_path):
-        """Initialize all properties"""
+        """Initialize all properties."""
+        # Path-related
         self.input = in_path
-        self.path = {}
-        self.trim = {}
-        self.audio = {}
-        self.video = {}
-        self.filter = {}
+        self.ext, self.output, self.temp = self.gather_paths()
 
-    def calc_path(self):
-        """Gather all necessary infos regarding output paths"""
+        command = [
+            "ffprobe", "-v", "error", "-show_format", "-show_streams",
+            "-print_format", "json", self.input
+        ]
+        info = subprocess.run(command, stdout=subprocess.PIPE).stdout
+        info = json.loads(info)
+
+        # Duration-related
+        try:
+            self.in_dur = float(info['format']['duration'])
+        except KeyError:
+            self.in_dur = self.brute_input_duration()
+        self.out_dur = self.calc_output_duration()
+
+        # Audio-related
+        a_streams = [s for s in info['streams'] if s['codec_type'] == "audio"]
+        self.a_rate, self.a_list, self.a_sample = self.audio_properties(a_streams)
+
+        # Video-related
+        self.v_rate = self.init_video_bitrate()
+
+        v_stream = info['streams'][0]
+        self.in_height, self.in_fps, self.ratio = self.video_properties(v_stream)
+        self.out_height = self.in_height
+        self.out_fps = self.in_fps
+
+    def gather_paths(self):
+        """Gather all necessary infos regarding output paths."""
         name = os.path.basename(self.input)
         name = os.path.splitext(name)[0]
 
-        self.path['ext'] = f"{'mkv' if out_image_subs(self.input) else 'webm'}"
-        self.path['file'] = f"{name}.{self.path['ext']}"
-        self.path['temp'] = f"{opts.temp_name}.{self.path['ext']}"
+        ext = f"{'mkv' if out_image_subs(self.input) else 'webm'}"
+        out = f"{name}.{ext}"
+        temp = f"{opts.temp_name}.{ext}"
 
-    def calc_trim(self, in_file, in_json):
-        """Calculate values regarding trim settings"""
-        try:
-            dur = float(in_json['format']['duration'])
-        except KeyError:
-            # Brute-force detect, if ffprobe can't get duration (i.e. GIFs or other images)
-            # Encodes input as AVC (fast) and reads duration from the output
-            command = ["ffmpeg", "-y", "-v", "error",
-                       "-i", in_file, "-map", "0:v",
-                       "-c:v", "libx264", "-preset", "ultrafast", "-crf", "51",
-                       opts.temp_name + ".mkv"]
-            subprocess.run(command)
+        return (ext, out, temp)
 
-            command = ["ffprobe", "-v", "error",
-                       "-show_format", "-show_streams",
-                       "-print_format", "json", opts.temp_name + ".mkv"]
-            out_json = subprocess.run(command, stdout=subprocess.PIPE).stdout
-            out_json = json.loads(out_json)
+    def brute_input_duration(self):
+        """Brute-force detect input duration for GIFs and other images."""
+        # Encodes input as AVC (fast) and reads duration from the output
+        ffmpeg = [
+            "ffmpeg", "-y", "-v", "error", "-i", self.input, "-map", "0:v",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "51",
+            opts.temp_name + ".mkv"
+        ]
+        ffprobe = [
+            "ffprobe", "-v", "error", "-show_format", "-show_streams",
+            "-print_format", "json", f"{opts.temp_name}.mkv"
+        ]
 
-            dur = float(out_json['format']['duration'])
+        subprocess.run(ffmpeg)
+        info = subprocess.run(ffprobe, stdout=subprocess.PIPE).stdout
+        info = json.loads(info)
+
+        return float(info['format']['duration'])
+
+    def calc_output_duration(self):
+        """Calculate output duration."""
+        if not (opts.global_start or opts.global_end):
+            return self.in_dur
 
         start = 0
-        end = dur
-
-        if opts.global_start and opts.global_start < dur:
+        end = self.in_dur
+        if opts.global_start and opts.global_start < end:
             start = opts.global_start
-        if opts.global_end and opts.global_end <= dur:
+        if opts.global_end and opts.global_end < end:
             end = opts.global_end
 
-        self.trim['in_dur'] = dur
-        self.trim['out_dur'] = round(end - start, 3)
+        return round(end - start, 3)
 
-    def calc_audio(self, in_json):
-        """Calculate values regarding audio settings"""
-        max_size = int(opts.limit*1024**2)
-
-        self.audio['bitrate'] = 0
-        self.audio['streams'] = 0
-        self.audio['channels'] = 0
-        # List to hold the individual stream output bitrates
-        self.audio['#'] = []
-        # 44100 is an arbitrary value to check later change
-        self.audio['rate'] = 44100
-
+    def audio_properties(self, streams):
+        """Gather various audio properties (e.g. bitrate, sample rate)."""
         if not opts.audio:
-            return
+            return (0, [], None)
 
-        streams = int(in_json['format']['nb_streams'])
+        c_list = [int(s['channels']) if not opts.force_stereo else 2
+                  for s in streams]
+        if opts.basic_format:
+            del c_list[1:]
+        channels = sum(c_list)
 
-        for s in range(streams):
-            if in_json['streams'][s]['codec_type'] == "audio":
-                if opts.force_stereo:
-                    channels = 2
-                else:
-                    channels = int(in_json['streams'][s]['channels'])
+        # Formula was originally based on my experience with stereo audio
+        # for 4MB WebMs, but was later changed to accommodate more bitrates
+        # and channels
+        factor = int(opts.limit*1024**2)*8 \
+                 / (self.out_dur*channels*4*1000) \
+                 / opts.a_factor
+        c_rate = choose_audio_bitrate(factor)
 
-                self.audio['#'].append(channels)
-                self.audio['channels'] += channels
-                self.audio['streams'] += 1
-
-                if opts.basic_format:
-                    break
-
-        # formula originally based on my experience with stereo audio for 4MB WebMs
-        # later on extended to accommodate more bitrates / channels
-        factor = max_size*8 / (self.trim['out_dur']*self.audio['channels']*4*1000)
-        # Audio factor decides how much of the size limit gets reserved for audio
-        factor /= opts.a_factor
-
-        if factor < 1:
-            c_bitrate = 6
-        elif factor < 2:
-            c_bitrate = 8
-        elif factor < 3:
-            c_bitrate = 12
-        elif factor < 4:
-            c_bitrate = 16
-        elif factor < 6:
-            c_bitrate = 24
-        elif factor < 8:
-            c_bitrate = 32
-        elif factor < 28:
-            c_bitrate = 48
-        elif factor < 72:
-            c_bitrate = 64
-        elif factor < 120:
-            c_bitrate = 80
-        else:
-            c_bitrate = 96
-
-        if c_bitrate < opts.min_audio:
-            c_bitrate = opts.min_audio
-        if opts.max_audio and c_bitrate > opts.max_audio:
-            c_bitrate = opts.max_audio
-
-        # Use internal stream count to get right audio index
-        for s in range(self.audio['streams']):
-            # Channel number already stored, so just mult. with channel bitrate
-            self.audio['#'][s] *= c_bitrate
-            self.audio['bitrate'] += self.audio['#'][s]
+        b_list = [c*c_rate for c in c_list]
+        bitrate = sum(b_list)
 
         # Downsample necessary for lower bitrates with libvorbis
-        if c_bitrate <= 6:
-            self.audio['rate'] = 8000
-        elif c_bitrate <= 12:
-            self.audio['rate'] = 12000
-        elif c_bitrate <= 16:
-            self.audio['rate'] = 24000
-
-    def calc_video(self, sizes, init):
-        """Calculate values regarding video settings"""
-        max_size = int(opts.limit*1024**2)
-
-        # Reset bitrate for each bitrate mode
-        if init:
-            bitrate = max_size*8 / (self.trim['out_dur']*1000) - self.audio['bitrate']
-            bitrate = int(bitrate)
+        if c_rate <= 6:
+            sample = 8000
+        elif c_rate <= 12:
+            sample = 12000
+        elif c_rate <= 16:
+            sample = 24000
         else:
-            # Size ratio dictates overall bitrate change, but audio bitrate is const
-            # (v+a) = (v_old+a) * (max/curr)
-            # v = v_old * (max/curr) + (max/curr - 1) * a
-            a_offset = int((max_size/sizes.temp - 1) * self.audio['bitrate'])
-            new_rate = int(self.video['bitrate'] * max_size/sizes.temp + a_offset)
-            min_rate = int(self.video['bitrate'] * opts.min_bitrate_ratio)
-            # Force min. decrease (% of last bitrate)
-            if min_rate < new_rate < self.video['bitrate']:
-                bitrate = min_rate
-            else:
-                bitrate = new_rate
+            sample = None
+
+        return (bitrate, b_list, sample)
+
+    def video_properties(self, stream):
+        """Gather various video properties (e.g. height, fps)."""
+        # If user scale/fps filter -> test encode
+        # Read the effect (i.e. changed resolution / frame rate) from output
+        if opts.user_scale or opts.user_fps:
+            ffmpeg = [
+                "ffmpeg", "-y", "-v", "error", "-i", self.input, "-vframes", "1",
+                "-filter_complex", opts.f_user, f"{opts.temp_name}.mkv"
+            ]
+            ffprobe = [
+                "ffprobe", "-v", "error", "-show_format", "-show_streams",
+                "-print_format", "json", f"{opts.temp_name}.mkv"
+            ]
+
+            subprocess.run(ffmpeg)
+            info = subprocess.run(ffprobe, stdout=subprocess.PIPE).stdout
+            info = json.loads(info)
+            stream = info['streams'][0]
+
+        h = int(stream['height'])
+        w = int(stream['width'])
+        ratio = w/h
+        try:
+            num, den = stream['r_frame_rate'].split("/")
+            fps = int(num)/int(den)
+        except ValueError:
+            fps = stream['r_frame_rate']
+
+        return (h, fps, ratio)
+
+    def init_video_bitrate(self):
+        """Initialize video bitrate to theoretical value."""
+        bitrate = int(opts.limit*1024**2*8 / (self.out_dur*1000) - self.a_rate)
+        if bitrate <= 0:
+            bitrate = opts.fallback_bitrate
+
+        return bitrate
+
+    def update_video_bitrate(self, size):
+        """Update video bitrate based on output file size."""
+        max_size = int(opts.limit*1024**2)
+        # Size ratio dictates overall bitrate change, but audio bitrate is const
+        # (v+a) = (v_old+a) * (max/curr)
+        # v = v_old * (max/curr) + (max/curr - 1) * a
+        a_offset = int((max_size/size - 1) * self.a_rate)
+        new_rate = int(self.v_rate * max_size/size + a_offset)
+        min_rate = int(self.v_rate * opts.min_bitrate_ratio)
+        # Force min. decrease (% of last bitrate)
+        if min_rate < new_rate < self.v_rate:
+            bitrate = min_rate
+        else:
+            bitrate = new_rate
 
         if bitrate <= 0:
             bitrate = opts.fallback_bitrate
 
-        self.video['bitrate'] = bitrate
+        self.v_rate = bitrate
 
-    def calc_filter(self, in_file, in_json):
-        """Calculate values regarding (script) filter settings"""
-        # Test for user set scale/fps filter
-        if opts.f_user:
-            user_scale = "scale" in opts.f_user
-            user_fps = "fps" in opts.f_user
-        else:
-            user_scale = False
-            user_fps = False
-
-        h = in_json['streams'][0]['height']
-        w = in_json['streams'][0]['width']
-        ratio = w/h
-
-        fps = in_json['streams'][0]['r_frame_rate'].split("/")
-        # Sometimes gets reported as fractional, sometimes not
-        if len(fps) == 2:
-            fps = int(fps[0])/int(fps[1])
-        elif len(fps) == 1:
-            fps = float(fps[0])
-        else:
-            err("Unsuspected fps formatting in Values.calc_filter()!")
-            sys.exit(status.RUN)
-
-        # If user scale/fps filter -> test encode
-        # Read the effect (i.e. changed resolution / frame rate) from output
-        if user_scale or user_fps:
-            command = ["ffmpeg", "-y", "-v", "error",
-                       "-i", in_file, "-vframes", "1",
-                       "-filter_complex", opts.f_user,
-                       opts.temp_name + ".mkv"]
-            subprocess.run(command)
-
-            command = ["ffprobe", "-v", "error",
-                       "-show_format", "-show_streams",
-                       "-print_format", "json",
-                       opts.temp_name + ".mkv"]
-            out_json = subprocess.run(command, stdout=subprocess.PIPE).stdout
-            out_json = json.loads(out_json)
-
-            h = out_json['streams'][0]['height']
-            w = out_json['streams'][0]['width']
-            ratio = w/h
-
-            fps = out_json['streams'][0]['r_frame_rate'].split("/")
-            if len(fps) == 2:
-                fps = int(fps[0])/int(fps[1])
-            elif len(fps) == 1:
-                fps = float(fps[0])
-            else:
-                err("Unsuspected fps formatting in Values.calc_filter()!")
-                sys.exit(status.RUN)
-
-        self.filter['in_height'] = h
-        self.filter['out_height'] = h
-        self.filter['in_fps'] = fps
-        self.filter['out_fps'] = fps
-
-        if user_scale and user_fps:
+    def update_filters(self):
+        """Update filter values based on the current video bitrate."""
+        if opts.user_scale and opts.user_fps:
             return
 
         # Perform frame rate drop
-        for f in opts.fps_list:
-            if user_fps:
-                break
+        if not opts.user_fps:
+            possible_fps = [
+                f for f in opts.fps_list
+                if self.v_rate*1000 / (f*self.ratio*self.in_height**2)
+                >= opts.bpp_thresh / 2
+            ]
+            if not possible_fps:
+                possible_fps = [opts.min_fps]
+            fps = possible_fps[0]
 
-            bpp = self.video['bitrate']*1000 / (fps*ratio*h**2)
-            if bpp >= opts.bpp_thresh/2:
-                break
-            fps = f
-
-        # Enfore frame rate thresholds
-        if fps < opts.min_fps:
-            fps = opts.min_fps
-        if opts.max_fps and fps > opts.max_fps:
-            fps = opts.max_fps
-        if fps > self.filter['in_fps']:
-            fps = self.filter['in_fps']
-        self.filter['out_fps'] = fps
+            # Enfore frame rate thresholds
+            if fps < opts.min_fps:
+                fps = opts.min_fps
+            if opts.max_fps and fps > opts.max_fps:
+                fps = opts.max_fps
+            if fps > self.in_fps:
+                fps = self.in_fps
+            self.out_fps = fps
 
         # Perform downscale
-        while True:
-            if user_scale:
-                break
+        if not opts.user_scale:
+            possible_heights = [
+                h for h in range(self.in_height, 0, opts.height_reduction)
+                if self.v_rate*1000 / (self.out_fps*self.ratio*h**2)
+                >= opts.bpp_thresh
+            ]
+            if not possible_heights:
+                possible_heights = [opts.min_height]
+            height = possible_heights[0]
 
-            bpp = self.video['bitrate']*1000 / (fps*ratio*h**2)
-            if bpp >= opts.bpp_thresh:
-                break
-            h -= opts.height_reduction
-
-        # Enforce height thresholds
-        if h < opts.min_height:
-            h = opts.min_height
-        if opts.max_height and h > opts.max_height:
-            h = opts.max_height
-        if h > self.filter['in_height']:
-            h = self.filter['in_height']
-        self.filter['out_height'] = h
+            # Enforce height thresholds
+            if height < opts.min_height:
+                height = opts.min_height
+            if opts.max_height and height > opts.max_height:
+                height = opts.max_height
+            if height > self.in_height:
+                height = self.in_height
+            self.out_height = height
 
 
-class Settings:
+class ConvertibleFile:
     """Assembles FFmpeg settings"""
 
-    def __init__(self):
+    def __init__(self, info):
         """Initialize all properties"""
-        self.verbosity = []
-        self.input = []
-        self.map = []
-        self.subtitle = []
-        self.audio = []
-        self.video = []
-        self.filter = []
+        self.info = info
 
-    def get_verbosity(self):
-        """Assemble FFmpeg settings regarding verbosity"""
+        # Verbosity-related
         if opts.ffmpeg_verbosity == "stats":
-            self.verbosity.extend(["-v", "error", "-stats"])
+            self.verbosity = ["-v", "error", "-stats"]
         else:
-            self.verbosity.extend(["-v", opts.ffmpeg_verbosity])
+            self.verbosity = ["-v", opts.ffmpeg_verbosity]
 
-    def get_trim(self, in_file, val):
-        """Assemble FFmpeg settings regarding input/trimming"""
-        in_dur = val.trim['in_dur']
+        # Trim/input-related
+        self.input = ["-i", self.info.input]
+        if opts.global_start and opts.global_start < self.info.in_dur:
+            self.input = ["-ss", str(opts.global_start)] + self.input
+        if opts.global_end and opts.global_end <= self.info.in_dur:
+            self.input.extend(["-t", str(self.info.out_dur)])
 
-        if opts.global_start and opts.global_start < in_dur:
-            self.input.extend(["-ss", str(opts.global_start)])
-
-        self.input.extend(["-i", in_file])
-
-        if opts.global_end and opts.global_end <= in_dur:
-            self.input.extend(["-t", str(val.trim['out_dur'])])
-
-    def get_map(self, val):
-        """Assemble FFmpeg settings regarding mapping"""
-        self.map.extend(["-map", "0:v"])
-
-        for s in range(val.audio['streams']):
-            if not opts.audio:
-                break
-            self.map.extend(["-map", "0:a:" + str(s) + "?"])
-            if opts.basic_format:
-                break
-
+        # Map-related
+        self.map = ["-map", "0:v"]
         if opts.subs:
             self.map.extend(["-map", "0:s?"])
+        if opts.audio:
+            a_streams = [
+                ["-map", f"0:a:{i}?"]
+                for i in range(len(self.info.a_list))
+                if opts.audio and not (opts.basic_format and i > 0)
+            ]
+            for s in a_streams:
+                self.map.extend(s)
 
-    def get_subs(self, in_file):
-        """Assemble FFmpeg settings regarding subtitles"""
+        # Subtitle-related
         if not opts.subs:
-            return
-
-        if opts.burn_subs:
-            self.subtitle.extend(["-sn"])
-        elif out_image_subs(in_file):
-            self.subtitle.extend(["-c:s", "copy"])
+            self.subs = []
+        elif opts.burn_subs:
+            self.subs = ["-sn"]
+        elif out_image_subs(self.info.input):
+            self.subs = ["-c:s", "copy"]
         else:
-            self.subtitle.extend(["-c:s", "webvtt"])
+            self.subs = ["-c:s", "webvtt"]
 
-    def get_audio(self, in_file, val):
-        """Assemble FFmpeg settings regarding audio"""
-        if not opts.audio:
-            return
-
-        for s in range(val.audio['streams']):
-            s_bitrate = val.audio['#'][s]
-
-            if audio_copy(in_file, s, s_bitrate):
-                self.audio.extend(["-c:a:" + str(s), "copy"])
-            elif opts.a_codec == "libopus" and opus_fallback(in_file, s):
-                self.audio.extend(["-c:a:" + str(s), opts.fallback_codec])
-                self.audio.extend(["-b:a:" + str(s), str(s_bitrate) + "K"])
+        # Audio-related
+        self.audio = []
+        a_streams = [i for i in range(len(self.info.a_list))
+                     if opts.audio and not (opts.basic_format and i > 0)]
+        for s in a_streams:
+            if audio_copy(self.info.input, s, self.info.a_list[s]):
+                self.audio.extend([f"-c:a:{s}", "copy"])
+            elif opts.a_codec == "libopus" and opus_fallback(self.info.input, s):
+                self.audio.extend([f"-c:a:{s}", opts.fallback_codec])
+                self.audio.extend([f"-b:a:{s}", f"{self.info.a_list[s]}K"])
             else:
-                self.audio.extend(["-c:a:" + str(s), opts.a_codec])
-                self.audio.extend(["-b:a:" + str(s), str(s_bitrate) + "K"])
-
-            if opts.basic_format:
-                break
+                self.audio.extend([f"-c:a:{s}", opts.a_codec])
+                self.audio.extend([f"-b:a:{s}", f"{self.info.a_list[s]}K"])
 
         # -ac/-ar have no effect without audio encoding
         # there's no need for additional checks
         if opts.force_stereo:
             self.audio.extend(["-ac", "2"])
-        if val.audio['rate'] < 44100:
-            self.audio.extend(["-ar", str(val.audio['rate'])])
+        if self.info.a_sample is not None:
+            self.audio.extend(["-ar", str(self.info.a_sample)])
 
-    def get_video(self, mode, val):
-        """Assemble FFmpeg settings regarding video"""
-        # Function gets called several times for a file
-        # Resetting necessary
         self.video = []
+        self.filter = []
 
-        self.video.extend(["-c:v", opts.v_codec])
+    def update_video_flags(self, mode):
+        """Assemble FFmpeg settings regarding video"""
+        self.video = ["-c:v", opts.v_codec]
         self.video.extend(["-deadline", "good"])
         # -cpu-used defined in call_ffmpeg, since it depends on the pass
 
@@ -488,7 +429,7 @@ class Settings:
                                "-arnr-maxframes", "15",
                                "-arnr-strength", "6"])
 
-        self.video.extend(["-b:v", str(val.video['bitrate']) + "K"])
+        self.video.extend(["-b:v", f"{self.info.v_rate}K"])
 
         if opts.crf and mode in (1, 2):
             self.video.extend(["-crf", str(opts.crf_value)])
@@ -496,9 +437,9 @@ class Settings:
         if mode == 1:
             self.video.extend(["-qmax", str(opts.min_quality)])
         elif mode == 3:
-            self.video.extend(["-minrate:v", str(val.video['bitrate']) + "K",
-                               "-maxrate:v", str(val.video['bitrate']) + "K",
-                               "-bufsize", str(val.video['bitrate']*5) + "K",
+            self.video.extend(["-minrate:v", f"{self.info.v_rate}K",
+                               "-maxrate:v", f"{self.info.v_rate}K",
+                               "-bufsize", f"{self.info.v_rate*5}K",
                                "-skip_threshold", "100"])
 
         self.video.extend(["-threads", str(opts.threads)])
@@ -509,26 +450,18 @@ class Settings:
                                "-tile-rows", "2",
                                "-row-mt", "1"])
 
-    def get_filters(self, val):
+    def update_filters_flags(self):
         """Assemble (script) filter string"""
-        # Function gets called several times for a file
-        # Resetting necessary
-        self.filter = []
+        f_scale = f"scale=-2:{self.info.out_height}:flags=lanczos"
+        f_fps = f"fps={self.info.out_fps}"
 
-        out_h = val.filter['out_height']
-        out_fps = val.filter['out_fps']
-        in_h = val.filter['in_height']
-        in_fps = val.filter['in_fps']
-
-        f_scale = "scale=-2:" + str(out_h) + ":flags=lanczos"
-        f_fps = "fps=" + str(out_fps)
-
-        if out_h < in_h and out_fps < in_fps:
-            self.filter.extend(["-vf", f_scale + "," + f_fps])
-        elif out_h < in_h:
-            self.filter.extend(["-vf", f_scale])
-        elif out_fps < in_fps:
-            self.filter.extend(["-vf", f_fps])
+        if self.info.out_height < self.info.in_height \
+           and self.info.out_fps < self.info.in_fps:
+            self.filter = ["-vf", f"{f_scale},{f_fps}"]
+        elif self.info.out_height < self.info.in_height:
+            self.filter = ["-vf", f_scale]
+        elif self.info.out_fps < self.info.in_fps:
+            self.filter = ["-vf", f_fps]
 
 
 class SizeData:
@@ -724,6 +657,8 @@ def parse_cli():
                 opts.limit = float(arg)
             elif opt in ("-f", "--filters"):
                 opts.f_user = arg
+                opts.user_scale = "scale" in arg
+                opts.user_fps = "fps" in arg
             elif opt in ("-p", "--passes"):
                 opts.passes = int(arg)
             elif opt in ("-u", "--undershoot"):
@@ -968,6 +903,37 @@ def parse_time(in_time):
     return time_in_sec
 
 
+def choose_audio_bitrate(factor):
+    """Choose audio bitrate per channel (based on personal experience)."""
+    if factor < 1:
+        bitrate = 6
+    elif factor < 2:
+        bitrate = 8
+    elif factor < 3:
+        bitrate = 12
+    elif factor < 4:
+        bitrate = 16
+    elif factor < 6:
+        bitrate = 24
+    elif factor < 8:
+        bitrate = 32
+    elif factor < 28:
+        bitrate = 48
+    elif factor < 72:
+        bitrate = 64
+    elif factor < 120:
+        bitrate = 80
+    else:
+        bitrate = 96
+
+    if bitrate < opts.min_audio:
+        bitrate = opts.min_audio
+    if opts.max_audio and bitrate > opts.max_audio:
+        bitrate = opts.max_audio
+
+    return bitrate
+
+
 def print_options():
     """Print all settings for verbose output"""
     msg("\n### Settings for the current session ###\n",
@@ -1125,7 +1091,7 @@ def out_image_subs(in_file):
     return False
 
 
-def call_ffmpeg(out_file, flags, mode):
+def call_ffmpeg(video, mode):
     """Execute FFmpeg (and assemble pass specific settings)"""
     v_raw = ["-c:v", "copy"]
     a_raw = ["-c:a", "copy"]
@@ -1146,7 +1112,7 @@ def call_ffmpeg(out_file, flags, mode):
 
     for p in range(1, opts.passes+1):
         if opts.passes == 1 or mode == 3:
-            p_flags = ["-cpu-used", "0", out_file]
+            p_flags = ["-cpu-used", "0", video.info.temp]
         elif p == 1:
             p_flags = ["-cpu-used", "5", "-pass", "1", "-f", "null", "-"]
             if opts.no_filter_firstpass:
@@ -1154,14 +1120,14 @@ def call_ffmpeg(out_file, flags, mode):
             if os.path.exists("ffmpeg2pass-0.log"):
                 continue
         elif p == 2:
-            p_flags = ["-cpu-used", "0", "-pass", "2", out_file]
+            p_flags = ["-cpu-used", "0", "-pass", "2", video.info.temp]
             if opts.no_filter_firstpass and opts.f_user:
                 f_raw = ["-filter_complex", opts.f_user]
 
         if opts.f_user:
             raw = ["ffmpeg", "-y", "-v", "error"]
-            raw.extend(flags.input)
-            raw.extend(flags.map)
+            raw.extend(video.input)
+            raw.extend(video.map)
             raw.extend(v_raw)
             raw.extend(a_raw)
             raw.extend(["-c:s", "copy"])
@@ -1169,16 +1135,16 @@ def call_ffmpeg(out_file, flags, mode):
             raw.extend(["-strict", "-2", "-f", "matroska", "-"])
 
         webm = ["ffmpeg", "-y"]
-        webm.extend(flags.verbosity)
+        webm.extend(video.verbosity)
         if opts.f_user:
             webm.extend(["-i", "-", "-map", "0"])
         else:
-            webm.extend(flags.input)
-            webm.extend(flags.map)
-        webm.extend(flags.video)
-        webm.extend(flags.audio)
-        webm.extend(flags.subtitle)
-        webm.extend(flags.filter)
+            webm.extend(video.input)
+            webm.extend(video.map)
+        webm.extend(video.video)
+        webm.extend(video.audio)
+        webm.extend(video.subs)
+        webm.extend(video.filter)
         webm.extend(p_flags)
 
         if opts.debug:
@@ -1198,7 +1164,7 @@ def call_ffmpeg(out_file, flags, mode):
             break
 
 
-def limit_size(in_file, in_json, val, flags, sizes):
+def limit_size(video, sizes):
     """Limit output size to be <=max_size"""
     max_size = int(opts.limit*1024**2)
 
@@ -1213,23 +1179,26 @@ def limit_size(in_file, in_json, val, flags, sizes):
             continue
 
         for i in range(1, opts.iters+1):
-            # i == 1 re-initialize, otherwise adjust
-            val.calc_video(sizes, init=i == 1)
-            val.calc_filter(in_file, in_json)
-            flags.get_video(m, val)
-            flags.get_filters(val)
+            # i == 1 re-initialize, otherwise
+            if i == 1:
+                video.info.v_rate = video.info.init_video_bitrate()
+            else:
+                video.info.update_video_bitrate(sizes.temp)
+            video.info.update_filters()
+            video.update_video_flags(m)
+            video.update_filters_flags()
 
             msg(f"Mode: {m} (of 3) | Attempt {i} (of {opts.iters}) | "
-                f"Height: {val.filter['out_height']} | "
-                f"FPS: {val.filter['out_fps']}", color=fgcolors.ATTEMPT)
+                f"Height: {video.info.out_height} | "
+                f"FPS: {video.info.out_fps}", color=fgcolors.ATTEMPT)
             msg(indent(dedent(f"""\
-                Video:      {flags.video}
-                Filters:    {flags.filter}"""), "  "),
+                Video:      {video.video}
+                Filters:    {video.filter}"""), "  "),
                 level=2, color=fgcolors.ATTEMPT_INFO)
 
-            call_ffmpeg(val.path['temp'], flags, m)
+            call_ffmpeg(video, m)
 
-            sizes.update(val.path['temp'], val.path['file'], enhance=False)
+            sizes.update(video.info.temp, video.info.output, enhance=False)
 
             msg(indent(dedent(f"""\
                 Curr. size: {sizes.temp}
@@ -1246,7 +1215,7 @@ def limit_size(in_file, in_json, val, flags, sizes):
     return m
 
 
-def raise_size(in_file, in_json, m, val, flags, sizes):
+def raise_size(m, video, sizes):
     """Raise output size to be >=min_size (and still <=max_size)"""
     max_size = int(opts.limit*1024**2)
     min_size = int(opts.limit*1024**2*opts.under)
@@ -1256,22 +1225,22 @@ def raise_size(in_file, in_json, m, val, flags, sizes):
             return
 
         # don't re-initialize; adjust the last bitrate from limit_size()
-        val.calc_video(sizes, init=False)
-        val.calc_filter(in_file, in_json)
-        flags.get_video(m, val)
-        flags.get_filters(val)
+        video.info.update_video_bitrate(sizes.temp)
+        video.info.update_filters()
+        video.update_video_flags(m)
+        video.update_filters_flags()
 
         msg(f"Enhance Attempt: {i} (of {opts.iters}) | "
-            f"Height: {val.filter['out_height']} | "
-            f"FPS: {val.filter['out_fps']}", color=fgcolors.ATTEMPT)
+            f"Height: {video.info.out_height} | "
+            f"FPS: {video.info.out_fps}", color=fgcolors.ATTEMPT)
         msg(indent(dedent(f"""\
-            Video:      {flags.video}
-            Filters:    {flags.filter}"""), "  "),
+            Video:      {video.video}
+            Filters:    {video.filter}"""), "  "),
             level=2, color=fgcolors.ATTEMPT_INFO)
 
-        call_ffmpeg(val.path['temp'], flags, m)
+        call_ffmpeg(video, m)
 
-        sizes.update(val.path['temp'], val.path['file'], enhance=True)
+        sizes.update(video.info.temp, video.info.output, enhance=True)
 
         msg(indent(dedent(f"""\
             Curr. size: {sizes.temp}
@@ -1315,15 +1284,12 @@ def main():
     msg("\n### Start conversion ###\n", level=2, color=fgcolors.HEADER)
 
     for i in input_list:
-        val = Values(i)
-        flags = Settings()
+        video = ConvertibleFile(FileInfo(i))
         sizes = SizeData()
 
         msg(f"Current file: {i}", color=fgcolors.FILE)
 
-        val.calc_path()
-
-        if val.path['ext'] == "mkv" and not opts.mkv_fallback:
+        if video.info.ext == "mkv" and not opts.mkv_fallback:
             err(i)
             err("Error: Conversion of image-based subtitles not supported!")
             clean()
@@ -1331,58 +1297,43 @@ def main():
 
         resolve_path(i)
 
-        command = ["ffprobe", "-v", "error",
-                   "-show_format", "-show_streams",
-                   "-print_format", "json", i]
-        in_json = subprocess.run(command, stdout=subprocess.PIPE).stdout
-        in_json = json.loads(in_json)
-
         # Check for basic stream order assumptions
         # First stream: video stream
         # Everything afterwards: non-video streams
-        if not in_json['streams'][0]['codec_type'] == "video":
-            err(i)
-            err("Error: Unsupported stream order (first stream not video)!")
-            clean()
-            continue
-        try:
-            if in_json['streams'][1]['codec_type'] == "video":
-                err(i)
-                err("Error: More than one video stream per file not supported!")
-                clean()
-                continue
-        except IndexError:
-            pass
-
-        val.calc_trim(i, in_json)
-        val.calc_audio(in_json)
-
-        flags.get_verbosity()
-        flags.get_trim(i, val)
-        flags.get_map(val)
-        flags.get_subs(i)
-        flags.get_audio(i, val)
+        # if not in_json['streams'][0]['codec_type'] == "video":
+            # err(i)
+            # err("Error: Unsupported stream order (first stream not video)!")
+            # clean()
+            # continue
+        # try:
+            # if in_json['streams'][1]['codec_type'] == "video":
+                # err(i)
+                # err("Error: More than one video stream per file not supported!")
+                # clean()
+                # continue
+        # except IndexError:
+            # pass
 
         msg(indent(dedent(f"""\
-            Verbosity:  {flags.verbosity}
-            Input/trim: {flags.input}
-            Mapping:    {flags.map}
-            Audio:      {flags.audio}
-            Subtitles:  {flags.subtitle}
-            Output:     {val.path['file']}"""), "  "),
+            Verbosity:  {video.verbosity}
+            Input/trim: {video.input}
+            Mapping:    {video.map}
+            Audio:      {video.audio}
+            Subtitles:  {video.subs}
+            Output:     {video.info.output}"""), "  "),
             level=2, color=fgcolors.FILE_INFO)
 
-        mode = limit_size(i, in_json, val, flags, sizes)
+        mode = limit_size(video, sizes)
         if sizes.out > max_size:
-            err(val.path['file'], color=fgcolors.WARNING)
+            err(video.info.output, color=fgcolors.WARNING)
             err("Error: Still too large!", color=fgcolors.WARNING)
             size_fail = True
             clean()
             continue
 
-        raise_size(i, in_json, mode, val, flags, sizes)
+        raise_size(mode, video, sizes)
         if sizes.out < min_size:
-            err(val.path['file'], color=fgcolors.WARNING)
+            err(video.info.output, color=fgcolors.WARNING)
             err("Error: Still too small!", color=fgcolors.WARNING)
             size_fail = True
 
