@@ -387,31 +387,38 @@ class ConvertibleFile:
             self.subs = ["-c:s", "webvtt"]
 
         # Audio-related
-        self.audio = []
+        self.audio = self.init_audio_flags()
+
+        # These get updated before each encoding attempt
+        self.video = []
+        self.filter = []
+
+    def init_audio_flags(self):
+        """Initialize audio-related FFmpeg options."""
+        audio = []
         a_streams = [i for i in range(len(self.info.a_list))
                      if opts.audio and not (opts.basic_format and i > 0)]
         for s in a_streams:
             if audio_copy(self.info.input, s, self.info.a_list[s]):
-                self.audio.extend([f"-c:a:{s}", "copy"])
+                audio.extend([f"-c:a:{s}", "copy"])
             elif opts.a_codec == "libopus" and opus_fallback(self.info.input, s):
-                self.audio.extend([f"-c:a:{s}", opts.fallback_codec])
-                self.audio.extend([f"-b:a:{s}", f"{self.info.a_list[s]}K"])
+                audio.extend([f"-c:a:{s}", opts.fallback_codec])
+                audio.extend([f"-b:a:{s}", f"{self.info.a_list[s]}K"])
             else:
-                self.audio.extend([f"-c:a:{s}", opts.a_codec])
-                self.audio.extend([f"-b:a:{s}", f"{self.info.a_list[s]}K"])
+                audio.extend([f"-c:a:{s}", opts.a_codec])
+                audio.extend([f"-b:a:{s}", f"{self.info.a_list[s]}K"])
 
         # -ac/-ar have no effect without audio encoding
         # there's no need for additional checks
         if opts.force_stereo:
-            self.audio.extend(["-ac", "2"])
+            audio.extend(["-ac", "2"])
         if self.info.a_sample is not None:
-            self.audio.extend(["-ar", str(self.info.a_sample)])
+            audio.extend(["-ar", str(self.info.a_sample)])
 
-        self.video = []
-        self.filter = []
+        return audio
 
     def update_video_flags(self, mode):
-        """Assemble FFmpeg settings regarding video"""
+        """Update video-related FFmpeg options."""
         self.video = ["-c:v", opts.v_codec]
         self.video.extend(["-deadline", "good"])
         # -cpu-used defined in call_ffmpeg, since it depends on the pass
@@ -451,7 +458,7 @@ class ConvertibleFile:
                                "-row-mt", "1"])
 
     def update_filters_flags(self):
-        """Assemble (script) filter string"""
+        """Update filter-related FFmpeg options."""
         f_scale = f"scale=-2:{self.info.out_height}:flags=lanczos"
         f_fps = f"fps={self.info.out_fps}"
 
