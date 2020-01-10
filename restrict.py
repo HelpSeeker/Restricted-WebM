@@ -463,6 +463,56 @@ class ConvertibleFile:
         elif self.info.out_fps < self.info.in_fps:
             self.filter = ["-vf", f_fps]
 
+    def assemble_raw_command(self, ff_pass):
+        """Assemble custom filter-applying FFmpeg command."""
+        video = ["-c:v", "copy"]
+        if opts.global_start or opts.f_video:
+            video = ["-c:v", "rawvideo"]
+
+        audio = ["-c:a", "copy"]
+        if opts.global_start or opts.f_audio:
+            audio = ["-c:a", "pcm_s16le"]
+
+        if opts.no_filter_firstpass and opts.passes == 2 and ff_pass == 1:
+            filters = []
+        else:
+            filters = ["-filter_complex", opts.f_user]
+
+        command = ["ffmpeg", "-y", "-v", "error"]
+        command.extend(self.input)
+        command.extend(self.map)
+        command.extend(video)
+        command.extend(audio)
+        command.extend(["-c:s", "copy"])
+        command.extend(filters)
+        command.extend(["-strict", "-2", "-f", "matroska", "-"])
+
+        return command
+
+    def assemble_command(self, mode, ff_pass):
+        """Assemble final FFmpeg command, which creates the output file."""
+        if opts.passes == 1 or mode == 3:
+            output = ["-cpu-used", "0", self.info.temp]
+        elif ff_pass == 1:
+            output = ["-cpu-used", "5", "-pass", "1", "-f", "null", "-"]
+        elif ff_pass == 2:
+            output = ["-cpu-used", "0", "-pass", "2", self.info.temp]
+
+        command = ["ffmpeg", "-y"]
+        command.extend(self.verbosity)
+        if opts.f_user:
+            command.extend(["-i", "-", "-map", "0"])
+        else:
+            command.extend(self.input)
+            command.extend(self.map)
+        command.extend(self.video)
+        command.extend(self.audio)
+        command.extend(self.subs)
+        command.extend(self.filter)
+        command.extend(output)
+
+        return command
+
 
 class SizeData:
     """Save and manage output file sizes"""
@@ -1092,17 +1142,7 @@ def out_image_subs(in_file):
 
 
 def call_ffmpeg(video, mode):
-    """Execute FFmpeg (and assemble pass specific settings)"""
-    v_raw = ["-c:v", "copy"]
-    a_raw = ["-c:a", "copy"]
-    f_raw = []
-    if opts.global_start or opts.f_video:
-        v_raw = ["-c:v", "rawvideo"]
-    if opts.global_start or opts.f_audio:
-        a_raw = ["-c:a", "pcm_s16le"]
-    if opts.f_user:
-        f_raw = ["-filter_complex", opts.f_user]
-
+    """Run FFmpeg to create the output."""
     # I give up!
     # Colors are reset for both stderr and stdout and yet FFmpeg prints
     # in color, unless we print another newline before it. And it has to
@@ -1111,55 +1151,29 @@ def call_ffmpeg(video, mode):
     print()
 
     for p in range(1, opts.passes+1):
-        if opts.passes == 1 or mode == 3:
-            p_flags = ["-cpu-used", "0", video.info.temp]
-        elif p == 1:
-            p_flags = ["-cpu-used", "5", "-pass", "1", "-f", "null", "-"]
-            if opts.no_filter_firstpass:
-                f_raw = []
-            if os.path.exists("ffmpeg2pass-0.log"):
-                continue
-        elif p == 2:
-            p_flags = ["-cpu-used", "0", "-pass", "2", video.info.temp]
-            if opts.no_filter_firstpass and opts.f_user:
-                f_raw = ["-filter_complex", opts.f_user]
-
-        if opts.f_user:
-            raw = ["ffmpeg", "-y", "-v", "error"]
-            raw.extend(video.input)
-            raw.extend(video.map)
-            raw.extend(v_raw)
-            raw.extend(a_raw)
-            raw.extend(["-c:s", "copy"])
-            raw.extend(f_raw)
-            raw.extend(["-strict", "-2", "-f", "matroska", "-"])
-
-        webm = ["ffmpeg", "-y"]
-        webm.extend(video.verbosity)
-        if opts.f_user:
-            webm.extend(["-i", "-", "-map", "0"])
-        else:
-            webm.extend(video.input)
-            webm.extend(video.map)
-        webm.extend(video.video)
-        webm.extend(video.audio)
-        webm.extend(video.subs)
-        webm.extend(video.filter)
-        webm.extend(p_flags)
+        if (opts.passes == 2 or mode == 3) and p == 1 \
+           and os.path.exists("ffmpeg2pass-0.log"):
+            continue
 
         if opts.debug:
             if opts.f_user:
-                print(raw)
-            print(webm)
+                print(video.assemble_raw_command(p))
+            print(video.assemble_command(mode, p))
         else:
             if opts.f_user:
-                raw_pipe = subprocess.Popen(raw, \
-                                            stdout=subprocess.PIPE, \
-                                            bufsize=10**8)
-                subprocess.run(webm, stdin=raw_pipe.stdout)
+                raw_pipe = subprocess.Popen(
+                    video.assemble_raw_command(p),
+                    stdout=subprocess.PIPE,
+                    bufsize=10**8
+                )
+                subprocess.run(
+                    video.assemble_command(mode, p),
+                    stdin=raw_pipe.stdout
+                )
             else:
-                subprocess.run(webm)
+                subprocess.run(video.assemble_command(mode, p))
 
+        # Always run 3rd mode (CBR) with only one pass
         if mode == 3:
             break
 
