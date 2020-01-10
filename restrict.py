@@ -556,7 +556,7 @@ class FileConverter:
         # Get current attempt size
         if opts.debug:
             try:
-                user = float(input("Output size in MB: "))
+                user = float(input("\nOutput size in MB: "))
             except ValueError:
                 # Use empty input as shortcut to end debug mode (simulate success)
                 user = opts.limit
@@ -598,18 +598,19 @@ class FileConverter:
                 msg(f"Mode: {self.mode} (of 3) | Attempt {i} (of {opts.iters}) | "
                     f"Height: {video.info.out_height} | "
                     f"FPS: {video.info.out_fps}", color=fgcolors.ATTEMPT)
-                msg(indent(dedent(f"""\
-                    Video:      {video.video}
-                    Filters:    {video.filter}"""), "  "),
+                msg(indent(dedent(f"""
+                    Video:      {' '.join(video.video)}
+                    Filters:    {' '.join(video.filter)}"""), "  "),
                     level=2, color=fgcolors.ATTEMPT_INFO)
 
                 call_ffmpeg(video, self.mode)
                 self.update_size(video)
 
-                msg(indent(dedent(f"""\
+                msg(indent(dedent(f"""
                     Curr. size: {self.curr_size}
                     Last size:  {self.last_size}
-                    Best try:   {self.best_size}"""), "  "),
+                    Best try:   {self.best_size}
+                    """), "  "),
                     level=2, color=fgcolors.SIZE_INFO)
 
                 # Skip remaining iters, if change too small (defaul: <1%)
@@ -632,18 +633,19 @@ class FileConverter:
             msg(f"Enhance Attempt: {i} (of {opts.iters}) | "
                 f"Height: {video.info.out_height} | "
                 f"FPS: {video.info.out_fps}", color=fgcolors.ATTEMPT)
-            msg(indent(dedent(f"""\
-                Video:      {video.video}
-                Filters:    {video.filter}"""), "  "),
+            msg(indent(dedent(f"""
+                Video:      {' '.join(video.video)}
+                Filters:    {' '.join(video.filter)}"""), "  "),
                 level=2, color=fgcolors.ATTEMPT_INFO)
 
             call_ffmpeg(video, self.mode)
             self.update_size(video)
 
-            msg(indent(dedent(f"""\
+            msg(indent(dedent(f"""
                 Curr. size: {self.curr_size}
                 Last size:  {self.last_size}
-                Best try:   {self.best_size}"""), "  "),
+                Best try:   {self.best_size}
+                """), "  "),
                 level=2, color=fgcolors.SIZE_INFO)
 
             # Skip remaining iters, if change too small (defaul: <1%)
@@ -1172,7 +1174,7 @@ def print_options():
           Height reduction step:       {opts.height_reduction}
           Min. frame rate threshold:   {opts.min_fps}
           Max. frame rate threshold:   {opts.max_fps if opts.max_fps else "-"}
-          Possible frame rates:        {opts.fps_list}
+          Possible frame rates:        {', '.join([str(f) for f in opts.fps_list])}
 
         Misc.:
           Only 1 video/audio stream:   {opts.basic_format}
@@ -1282,8 +1284,8 @@ def call_ffmpeg(video, mode):
 
         if opts.debug:
             if opts.f_user:
-                print(video.assemble_raw_command(p))
-            print(video.assemble_command(mode, p))
+                print(' '.join(video.assemble_raw_command(p)))
+            print(' '.join(video.assemble_command(mode, p)))
         else:
             if opts.f_user:
                 raw_pipe = subprocess.Popen(
@@ -1358,13 +1360,14 @@ def main():
         # except IndexError:
             # pass
 
-        msg(indent(dedent(f"""\
-            Verbosity:  {video.verbosity}
-            Input/trim: {video.input}
-            Mapping:    {video.map}
-            Audio:      {video.audio}
-            Subtitles:  {video.subs}
-            Output:     {video.info.output}"""), "  "),
+        msg(indent(dedent(f"""
+            Verbosity:  {' '.join(video.verbosity)}
+            Input/trim: {' '.join(video.input)}
+            Mapping:    {' '.join(video.map)}
+            Audio:      {' '.join(video.audio)}
+            Subtitles:  {' '.join(video.subs)}
+            Output:     {video.info.output}
+            """), "  "),
             level=2, color=fgcolors.FILE_INFO)
 
         restrictor.process(video)
