@@ -64,9 +64,11 @@ class Options:
     verbosity = 1
     audio = False
     limit = 3
+    max_size = int(limit*1024**2)
     f_user = None
     passes = 2
     under = 0.75
+    min_size = int(limit*1024**2*under)
     iters = 3
     threads = 1
     global_start = None
@@ -219,7 +221,7 @@ class FileInfo:
         # Formula was originally based on my experience with stereo audio
         # for 4MB WebMs, but was later changed to accommodate more bitrates
         # and channels
-        factor = int(opts.limit*1024**2)*8 \
+        factor = opts.max_size*8 \
                  / (self.out_dur*channels*4*1000) \
                  / opts.a_factor
         c_rate = choose_audio_bitrate(factor)
@@ -271,7 +273,7 @@ class FileInfo:
 
     def init_video_bitrate(self):
         """Initialize video bitrate to theoretical value."""
-        bitrate = int(opts.limit*1024**2*8 / (self.out_dur*1000) - self.a_rate)
+        bitrate = int(opts.max_size*8 / (self.out_dur*1000) - self.a_rate)
         if bitrate <= 0:
             bitrate = opts.fallback_bitrate
 
@@ -279,12 +281,11 @@ class FileInfo:
 
     def update_video_bitrate(self, size):
         """Update video bitrate based on output file size."""
-        max_size = int(opts.limit*1024**2)
         # Size ratio dictates overall bitrate change, but audio bitrate is const
         # (v+a) = (v_old+a) * (max/curr)
         # v = v_old * (max/curr) + (max/curr - 1) * a
-        a_offset = int((max_size/size - 1) * self.a_rate)
-        new_rate = int(self.v_rate * max_size/size + a_offset)
+        a_offset = int((opts.max_size/size - 1) * self.a_rate)
+        new_rate = int(self.v_rate * opts.max_size/size + a_offset)
         min_rate = int(self.v_rate * opts.min_bitrate_ratio)
         # Force min. decrease (% of last bitrate)
         if min_rate < new_rate < self.v_rate:
@@ -521,46 +522,161 @@ class ConvertibleFile:
         return command
 
 
-class SizeData:
-    """Save and manage output file sizes"""
+class FileConverter:
+    """Handle the conversion process of a convertible file."""
 
     def __init__(self):
-        """Initialize all properties"""
-        self.temp = 0
-        self.out = 0
-        self.last = 0
+        """Initialize all properties."""
+        self.curr_size = 0
+        self.best_size = 0
+        self.last_size = 0
 
-    def update(self, temp_file, out_file, enhance):
-        """Update all properties during the limiting process"""
+        # Bitrate modes (not in technically accurate sense):
+        #   1 -> VBR/CQ + qmax
+        #   2 -> VBR/CQ
+        #   3 -> CBR
+
+        # Set first mode to use
+        if opts.no_qmax:
+            self.min_mode = 2
+        else:
+            self.min_mode = 1
+        # Set last mode to use
+        if opts.no_cbr:
+            self.max_mode = 2
+        else:
+            self.max_mode = 3
+        # Initialize mode tracker with the first mode
+        self.mode = self.min_mode
+
+    def update_size(self, video):
+        """Update size information after an encoding attempt."""
+        # Save size from previous attempt for later rel. difference check
+        self.last_size = self.curr_size
+        # Get current attempt size
         if opts.debug:
             try:
                 user = float(input("Output size in MB: "))
             except ValueError:
                 # Use empty input as shortcut to end debug mode (simulate success)
                 user = opts.limit
-
-            self.last = self.temp
-            self.temp = int(user * 1024**2)
+            self.curr_size = int(user*1024**2)
         else:
-            self.last = self.temp
-            self.temp = os.path.getsize(temp_file)
+            self.curr_size = os.path.getsize(video.info.temp)
 
-        if enhance:
-            if self.out < self.temp <= int(opts.limit * 1024**2):
-                self.out = self.temp
-                if not opts.debug:
-                    os.replace(temp_file, out_file)
-        else:
-            if not self.out or self.temp < self.out:
-                self.out = self.temp
-                if not opts.debug:
-                    os.replace(temp_file, out_file)
+        # Test if current size is the best attempt yet
+        # True, if
+        #   -> first try (no best size yet)
+        #   -> best try too large; smaller than best try (still tries to limit)
+        #   -> best try ok; bigger than best try and smaller than max size
+        if not self.best_size \
+           or self.curr_size < self.best_size and self.best_size > opts.max_size \
+           or self.best_size < self.curr_size <= opts.max_size \
+           and self.best_size < opts.max_size:
+            self.best_size = self.curr_size
+            if not opts.debug:
+                os.replace(video.info.temp, video.info.output)
 
     def skip_mode(self):
-        """Check for insufficient change"""
-        diff = abs((self.temp-self.last) / self.last)
-
+        """Check for insufficient file size change."""
+        diff = abs((self.curr_size-self.last_size) / self.last_size)
         return bool(diff < opts.skip_limit)
+
+    def limit_size(self, video):
+        """Limit output size to the given upper limit."""
+        while self.mode <= self.max_mode:
+            for i in range(1, opts.iters+1):
+                # Reset bitrate for 1st attempt of a new mode
+                if i == 1:
+                    video.info.v_rate = video.info.init_video_bitrate()
+                else:
+                    video.info.update_video_bitrate(self.curr_size)
+                video.info.update_filters()
+                video.update_video_flags(self.mode)
+                video.update_filters_flags()
+
+                msg(f"Mode: {self.mode} (of 3) | Attempt {i} (of {opts.iters}) | "
+                    f"Height: {video.info.out_height} | "
+                    f"FPS: {video.info.out_fps}", color=fgcolors.ATTEMPT)
+                msg(indent(dedent(f"""\
+                    Video:      {video.video}
+                    Filters:    {video.filter}"""), "  "),
+                    level=2, color=fgcolors.ATTEMPT_INFO)
+
+                call_ffmpeg(video, self.mode)
+                self.update_size(video)
+
+                msg(indent(dedent(f"""\
+                    Curr. size: {self.curr_size}
+                    Last size:  {self.last_size}
+                    Best try:   {self.best_size}"""), "  "),
+                    level=2, color=fgcolors.SIZE_INFO)
+
+                # Skip remaining iters, if change too small (defaul: <1%)
+                if i > 1 and self.skip_mode():
+                    break
+                if self.best_size <= opts.max_size:
+                    return
+
+            self.mode += 1
+
+    def raise_size(self, video):
+        """Raise output size above the given lower limit."""
+        for i in range(1, opts.iters+1):
+            # don't re-initialize; adjust the last bitrate from limit_size()
+            video.info.update_video_bitrate(self.curr_size)
+            video.info.update_filters()
+            video.update_video_flags(self.mode)
+            video.update_filters_flags()
+
+            msg(f"Enhance Attempt: {i} (of {opts.iters}) | "
+                f"Height: {video.info.out_height} | "
+                f"FPS: {video.info.out_fps}", color=fgcolors.ATTEMPT)
+            msg(indent(dedent(f"""\
+                Video:      {video.video}
+                Filters:    {video.filter}"""), "  "),
+                level=2, color=fgcolors.ATTEMPT_INFO)
+
+            call_ffmpeg(video, self.mode)
+            self.update_size(video)
+
+            msg(indent(dedent(f"""\
+                Curr. size: {self.curr_size}
+                Last size:  {self.last_size}
+                Best try:   {self.best_size}"""), "  "),
+                level=2, color=fgcolors.SIZE_INFO)
+
+            # Skip remaining iters, if change too small (defaul: <1%)
+            if self.skip_mode():
+                return
+            if opts.min_size <= self.best_size <= opts.max_size:
+                return
+
+    def process(self, video):
+        """Process (i.e. convert) a single input video."""
+        global size_fail
+
+        self.limit_size(video)
+        if self.best_size > opts.max_size:
+            err(video.info.input, color=fgcolors.WARNING)
+            err("Output still too large!", color=fgcolors.WARNING)
+            size_fail = True
+            return
+        if self.best_size >= opts.min_size:
+            return
+
+        self.raise_size(video)
+        if self.best_size < opts.min_size:
+            err(video.info.input, color=fgcolors.WARNING)
+            err("Error: Still too small!", color=fgcolors.WARNING)
+            size_fail = True
+
+    def reset(self):
+        """Reset instance variables after conversion."""
+        self.curr_size = 0
+        self.best_size = 0
+        self.last_size = 0
+        self.mode = self.min_mode
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Functions
@@ -798,6 +914,10 @@ def parse_cli():
             err(f"Invalid {opt} ('{arg}')!")
             sys.exit(status.OPT)
 
+    # Additional option-independent steps
+    opts.max_size = int(opts.limit*1024**2)
+    opts.min_size = int(opts.limit*1024**2*opts.under)
+
 
 def check_options():
     """Check validity of command line options"""
@@ -902,8 +1022,6 @@ def check_options():
 
 def check_filters():
     """Test user set filters"""
-    global opts
-
     if not opts.f_user:
         return
 
@@ -1004,8 +1122,8 @@ def print_options():
         Size:
           Max. size (MB):              {opts.limit}
           Undershoot ratio:            {opts.under}
-          Max. size (Bytes):           {int(opts.limit*1024**2)}
-          Min. size (Bytes):           {int(opts.limit*1024**2*opts.under)}
+          Max. size (Bytes):           {opts.max_size}
+          Min. size (Bytes):           {opts.min_size}
 
         Trimming:
           Start time (sec):            {opts.global_start if opts.global_start else "-"}
@@ -1185,95 +1303,6 @@ def call_ffmpeg(video, mode):
             break
 
 
-def limit_size(video, sizes):
-    """Limit output size to be <=max_size"""
-    max_size = int(opts.limit*1024**2)
-
-    # VBR + qmax (1), VBR (2) and CBR (3)
-    modes = 3
-    # omit CBR when --no-cbr is used
-    if opts.no_cbr:
-        modes = 2
-
-    for m in range(1, modes+1):
-        if m == 1 and opts.no_qmax:
-            continue
-
-        for i in range(1, opts.iters+1):
-            # i == 1 re-initialize, otherwise
-            if i == 1:
-                video.info.v_rate = video.info.init_video_bitrate()
-            else:
-                video.info.update_video_bitrate(sizes.temp)
-            video.info.update_filters()
-            video.update_video_flags(m)
-            video.update_filters_flags()
-
-            msg(f"Mode: {m} (of 3) | Attempt {i} (of {opts.iters}) | "
-                f"Height: {video.info.out_height} | "
-                f"FPS: {video.info.out_fps}", color=fgcolors.ATTEMPT)
-            msg(indent(dedent(f"""\
-                Video:      {video.video}
-                Filters:    {video.filter}"""), "  "),
-                level=2, color=fgcolors.ATTEMPT_INFO)
-
-            call_ffmpeg(video, m)
-
-            sizes.update(video.info.temp, video.info.output, enhance=False)
-
-            msg(indent(dedent(f"""\
-                Curr. size: {sizes.temp}
-                Last size:  {sizes.last}
-                Best try:   {sizes.out}"""), "  "),
-                level=2, color=fgcolors.SIZE_INFO)
-
-            # Skip remaining iters, if change too small (defaul: <1%)
-            if i > 1 and sizes.skip_mode():
-                break
-            if sizes.out <= max_size:
-                return m
-
-    return m
-
-
-def raise_size(m, video, sizes):
-    """Raise output size to be >=min_size (and still <=max_size)"""
-    max_size = int(opts.limit*1024**2)
-    min_size = int(opts.limit*1024**2*opts.under)
-
-    for i in range(1, opts.iters+1):
-        if min_size <= sizes.out <= max_size:
-            return
-
-        # don't re-initialize; adjust the last bitrate from limit_size()
-        video.info.update_video_bitrate(sizes.temp)
-        video.info.update_filters()
-        video.update_video_flags(m)
-        video.update_filters_flags()
-
-        msg(f"Enhance Attempt: {i} (of {opts.iters}) | "
-            f"Height: {video.info.out_height} | "
-            f"FPS: {video.info.out_fps}", color=fgcolors.ATTEMPT)
-        msg(indent(dedent(f"""\
-            Video:      {video.video}
-            Filters:    {video.filter}"""), "  "),
-            level=2, color=fgcolors.ATTEMPT_INFO)
-
-        call_ffmpeg(video, m)
-
-        sizes.update(video.info.temp, video.info.output, enhance=True)
-
-        msg(indent(dedent(f"""\
-            Curr. size: {sizes.temp}
-            Last size:  {sizes.last}
-            Best try:   {sizes.out}"""), "  "),
-            level=2, color=fgcolors.SIZE_INFO)
-
-        # Skip remaining iters, if change too small (defaul: <1%)
-        if sizes.skip_mode():
-            return
-
-
 def clean():
     """Clean leftover file in the workspace"""
     for ext in [".webm", ".mkv"]:
@@ -1289,26 +1318,20 @@ def clean():
 
 def main():
     """Main function body"""
-    global size_fail
-
     check_prereq()
     parse_cli()
     if not opts.color:
         fgcolors.disable()
     check_options()
     check_filters()
-
-    max_size = int(opts.limit*1024**2)
-    min_size = int(opts.limit*1024**2*opts.under)
-
     print_options()
+
     msg("\n### Start conversion ###\n", level=2, color=fgcolors.HEADER)
+    restrictor = FileConverter()
 
     for i in input_list:
-        video = ConvertibleFile(FileInfo(i))
-        sizes = SizeData()
-
         msg(f"Current file: {i}", color=fgcolors.FILE)
+        video = ConvertibleFile(FileInfo(i))
 
         if video.info.ext == "mkv" and not opts.mkv_fallback:
             err(i)
@@ -1344,19 +1367,8 @@ def main():
             Output:     {video.info.output}"""), "  "),
             level=2, color=fgcolors.FILE_INFO)
 
-        mode = limit_size(video, sizes)
-        if sizes.out > max_size:
-            err(video.info.output, color=fgcolors.WARNING)
-            err("Error: Still too large!", color=fgcolors.WARNING)
-            size_fail = True
-            clean()
-            continue
-
-        raise_size(mode, video, sizes)
-        if sizes.out < min_size:
-            err(video.info.output, color=fgcolors.WARNING)
-            err("Error: Still too small!", color=fgcolors.WARNING)
-            size_fail = True
+        restrictor.process(video)
+        restrictor.reset()
 
         clean()
 
