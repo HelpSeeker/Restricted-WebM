@@ -25,26 +25,26 @@ class Colors:
     """Store ANSI escape codes for colorized output."""
 
     # https://en.wikipedia.org/wiki/ANSI_escape_code#Colors
-    FILE = '\033[35m'           # Magenta
-    ATTEMPT = '\033[32m'        # Green
     HEADER = '\033[1;36m'       # Cyan (bold)
-    FILE_INFO = FILE
-    ATTEMPT_INFO = ATTEMPT
-    SIZE_INFO = ATTEMPT
+    FILE = '\033[35m'           # Magenta
+    INFO = '\033[32m'           # Green
     ERROR = '\033[31m'          # Red
     WARNING = '\033[33m'        # Yellow
+    SUCCESS = '\033[32m'        # Green
+    DEFAULT = '\033[39m'        # Default foreground color
+    BOLD = '\033[1m'
     RESET = '\033[0m'
 
     def disable(self):
         """Disable colorized output by removing escape codes."""
-        self.FILE = ''
-        self.ATTEMPT = ''
         self.HEADER = ''
-        self.FILE_INFO = ''
-        self.ATTEMPT_INFO = ''
-        self.SIZE_INFO = ''
+        self.FILE = ''
+        self.INFO = ''
         self.ERROR = ''
         self.WARNING = ''
+        self.SUCCESS = ''
+        self.DEFAULT = ''
+        self.BOLD = ''
         self.RESET = ''
 
 
@@ -577,6 +577,23 @@ class FileConverter:
             if not opts.debug:
                 os.replace(video.info.temp, video.info.output)
 
+    def size_info(self):
+        """Fetch info text about the currently saved file sizes."""
+        if self.best_size > opts.max_size:
+            color = fgcolors.ERROR
+        elif self.best_size < opts.min_size:
+            color = fgcolors.WARNING
+        else:
+            color = fgcolors.SUCCESS
+
+        info = indent(dedent(f"""
+            Curr. size: {round(self.curr_size/1024**2, 2)} MB
+            Last size:  {round(self.last_size/1024**2, 2)} MB
+            Best try:   {color}{round(self.best_size/1024**2, 2)}{fgcolors.RESET} MB
+            """), "  ")
+
+        return info
+
     def skip_mode(self):
         """Check for insufficient file size change."""
         diff = abs((self.curr_size-self.last_size) / self.last_size)
@@ -595,23 +612,19 @@ class FileConverter:
                 video.update_video_flags(self.mode)
                 video.update_filters_flags()
 
-                msg(f"Mode: {self.mode} (of 3) | Attempt {i} (of {opts.iters}) | "
-                    f"Height: {video.info.out_height} | "
-                    f"FPS: {video.info.out_fps}", color=fgcolors.ATTEMPT)
+                msg(f"Mode {fgcolors.INFO}{self.mode}{fgcolors.DEFAULT} (of 3) | "
+                    f"Attempt {fgcolors.INFO}{i}{fgcolors.DEFAULT} (of {opts.iters}) | "
+                    f"Height: {fgcolors.INFO}{video.info.out_height}{fgcolors.DEFAULT} | "
+                    f"FPS: {fgcolors.INFO}{video.info.out_fps}{fgcolors.DEFAULT}")
                 msg(indent(dedent(f"""
                     Video:      {' '.join(video.video)}
-                    Filters:    {' '.join(video.filter)}"""), "  "),
-                    level=2, color=fgcolors.ATTEMPT_INFO)
+                    Filters:    {' '.join(video.filter)}
+                    """), "  "),
+                    level=2)
 
                 call_ffmpeg(video, self.mode)
                 self.update_size(video)
-
-                msg(indent(dedent(f"""
-                    Curr. size: {self.curr_size}
-                    Last size:  {self.last_size}
-                    Best try:   {self.best_size}
-                    """), "  "),
-                    level=2, color=fgcolors.SIZE_INFO)
+                msg(self.size_info(), level=2)
 
                 # Skip remaining iters, if change too small (defaul: <1%)
                 if i > 1 and self.skip_mode():
@@ -630,23 +643,18 @@ class FileConverter:
             video.update_video_flags(self.mode)
             video.update_filters_flags()
 
-            msg(f"Enhance Attempt: {i} (of {opts.iters}) | "
-                f"Height: {video.info.out_height} | "
-                f"FPS: {video.info.out_fps}", color=fgcolors.ATTEMPT)
+            msg(f"Enhance Attempt {fgcolors.INFO}{i}{fgcolors.DEFAULT} (of {opts.iters}) | "
+                f"Height: {fgcolors.INFO}{video.info.out_height}{fgcolors.DEFAULT} | "
+                f"FPS: {fgcolors.INFO}{video.info.out_fps}{fgcolors.DEFAULT}")
             msg(indent(dedent(f"""
                 Video:      {' '.join(video.video)}
-                Filters:    {' '.join(video.filter)}"""), "  "),
-                level=2, color=fgcolors.ATTEMPT_INFO)
+                Filters:    {' '.join(video.filter)}
+                """), "  "),
+                level=2)
 
             call_ffmpeg(video, self.mode)
             self.update_size(video)
-
-            msg(indent(dedent(f"""
-                Curr. size: {self.curr_size}
-                Last size:  {self.last_size}
-                Best try:   {self.best_size}
-                """), "  "),
-                level=2, color=fgcolors.SIZE_INFO)
+            msg(self.size_info(), level=2)
 
             # Skip remaining iters, if change too small (defaul: <1%)
             if self.skip_mode():
@@ -660,8 +668,8 @@ class FileConverter:
 
         self.limit_size(video)
         if self.best_size > opts.max_size:
-            err(video.info.input, color=fgcolors.WARNING)
-            err("Output still too large!", color=fgcolors.WARNING)
+            err(f"{os.path.abspath(video.info.output)}: Still too large",
+                color=fgcolors.WARNING)
             size_fail = True
             return
         if self.best_size >= opts.min_size:
@@ -669,8 +677,8 @@ class FileConverter:
 
         self.raise_size(video)
         if self.best_size < opts.min_size:
-            err(video.info.input, color=fgcolors.WARNING)
-            err("Error: Still too small!", color=fgcolors.WARNING)
+            err(f"{os.path.abspath(video.info.output)}: Still too small",
+                color=fgcolors.WARNING)
             size_fail = True
 
     def reset(self):
@@ -693,8 +701,11 @@ def err(*args, level=0, color=fgcolors.ERROR, **kwargs):
     sys.stdout.write(fgcolors.RESET)
 
 
-def msg(*args, level=1, color=fgcolors.RESET, **kwargs):
+def msg(*args, level=1, color=fgcolors.DEFAULT, **kwargs):
     """Print to stdout based on verbosity level."""
+    if level < opts.verbosity:
+        # Print "lower-level" info bold in more verbose modes
+        sys.stdout.write(fgcolors.BOLD)
     if level <= opts.verbosity:
         sys.stdout.write(color)
         print(*args, **kwargs)
@@ -824,6 +835,7 @@ def parse_cli():
                 sys.exit(0)
             elif opt in ("-q", "--quiet"):
                 opts.verbosity = 0
+                opts.ffmpeg_verbosity = "warning"
             elif opt in ("-v", "--verbose"):
                 opts.verbosity = 2
             elif opt in ("-a", "--audio"):
@@ -925,7 +937,7 @@ def check_options():
     """Check validity of command line options"""
     # Check for input files
     if not input_list:
-        err("No input files specified!", color=fgcolors.WARNING)
+        err("No input files specified.", color=fgcolors.WARNING)
         sys.exit(status.OPT)
     for i in input_list:
         name = os.path.basename(i)
@@ -1270,12 +1282,9 @@ def out_image_subs(in_file):
 
 def call_ffmpeg(video, mode):
     """Run FFmpeg to create the output."""
-    # I give up!
-    # Colors are reset for both stderr and stdout and yet FFmpeg prints
-    # in color, unless we print another newline before it. And it has to
-    # be a newline, because anything else gets simply swalled for some
-    # mysterious reason
-    print()
+    # Print placeholder line, if FFmpeg output is suppressed
+    if opts.ffmpeg_verbosity not in ["info", "verbose", "debug", "trace", "stats"]:
+        msg("Converting...")
 
     for p in range(1, opts.passes+1):
         if (opts.passes == 2 or mode == 3) and p == 1 \
@@ -1331,17 +1340,18 @@ def main():
     msg("\n### Start conversion ###\n", level=2, color=fgcolors.HEADER)
     restrictor = FileConverter()
 
-    for i in input_list:
-        msg(f"Current file: {i}", color=fgcolors.FILE)
-        video = ConvertibleFile(FileInfo(i))
+    for i, path in enumerate(input_list):
+        resolve_path(path)
+        video = ConvertibleFile(FileInfo(path))
+
+        msg(f"File {fgcolors.FILE}{i+1}{fgcolors.DEFAULT} (of {len(input_list)}): "
+            f"{fgcolors.FILE}{video.info.input}{fgcolors.DEFAULT}")
 
         if video.info.ext == "mkv" and not opts.mkv_fallback:
-            err(i)
-            err("Error: Conversion of image-based subtitles not supported!")
+            err(f"{video.info.input}: "
+                "Conversion of image-based subtitles not supported!")
             clean()
             continue
-
-        resolve_path(i)
 
         # Check for basic stream order assumptions
         # First stream: video stream
@@ -1366,9 +1376,9 @@ def main():
             Mapping:    {' '.join(video.map)}
             Audio:      {' '.join(video.audio)}
             Subtitles:  {' '.join(video.subs)}
-            Output:     {video.info.output}
+            Output:     {os.path.abspath(video.info.output)}
             """), "  "),
-            level=2, color=fgcolors.FILE_INFO)
+            level=2)
 
         restrictor.process(video)
         restrictor.reset()
