@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
-import os
-import sys
+import argparse
 import json
+import os
 import subprocess
-from fnmatch import fnmatch
+import sys
 from textwrap import dedent, indent
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -57,10 +57,10 @@ size_fail = False
 # Classes
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-class Options:
+class DefaultOptions:
     """Stores general options"""
 
-    # Common user settings
+    # Common Options
     verbosity = 1
     audio = False
     limit = 3
@@ -76,12 +76,12 @@ class Options:
     force_stereo = False
     basic_format = False
 
-    # Subtitle options
+    # Subtitle Options
     subs = False
     mkv_fallback = False
     burn_subs = False
 
-    # Advanced video options
+    # Advanced Video Options
     v_codec = "libvpx"
     crf = False
     no_qmax = False
@@ -94,38 +94,86 @@ class Options:
     min_fps = 24
     max_fps = None
 
-    # Advanced audio settings
+    # Advanced Audio Options
     a_codec = "libvorbis"
     no_copy = False
     force_copy = False
     min_audio = 24
     max_audio = None
 
-    # Misc settings
+    # Misc. Options
     no_filter_firstpass = False
     ffmpeg_verbosity = "stats"
-    color = True
     debug = False
 
-    # Advanced user settings
-    fps_list = [60, 30, 25, 24, 22, 20, 18, 16, 14, 12, 10, 8, 6, 4, 2, 1]
-    audio_test_dur = 60      # 0 for whole stream -> exact bitrate
-    fallback_bitrate = 1     # Must be >0
-    height_reduction = -10   # Must be <0
-    min_quality = 50
-    crf_value = 10
-    min_bitrate_ratio = 0.9
-    skip_limit = 0.01
-    a_factor = 5.5
-    fallback_codec = "libvorbis"
-    temp_name = "temp"
-    out_dir = "webm_done"
 
-    # Don't touch
-    f_audio = False
-    f_video = False
-    user_scale = False
-    user_fps = False
+class CustomArgumentParser(argparse.ArgumentParser):
+    """Override ArgumentParser's automatic help text."""
+
+    def format_help(self):
+        """Return custom help text."""
+        help_text = dedent(f"""\
+        RestrictedWebM is a script to produce WebMs within a certain size range.
+
+        {self.prog} [OPTIONS] INPUT [INPUT]...
+
+        Input:
+          Absolute or relative path to a video/image
+
+        Common options:
+          -h,  --help               show help
+          -q,  --quiet              suppress non-error output
+          -v,  --verbose            print verbose information
+          -a,  --audio              enable audio output
+          -s,  --size SIZE          limit max. output file size in MB (def: {self.get_default("limit")})
+          -f,  --filters FILTERS    use custom ffmpeg filters
+          -p,  --passes {{1,2}}       specify number of passes (def: {self.get_default("passes")})
+          -u,  --undershoot RATIO   specify undershoot ratio (def: {self.get_default("under")})
+          -i,  --iterations ITER    iterations for each bitrate mode (def: {self.get_default("iters")})
+          -t,  --threads THREADS    enable multithreading
+          -ss, --start TIME         start encoding at the specified time
+          -to, --end TIME           end encoding at the specified time
+          -fs, --force-stereo       force stereo audio output
+          -bf, --basic-format       restrict output to one video/audio stream
+
+        Subtitle options:
+          --subtitles               enable subtitle output
+          --mkv-fallback            allow usage of MKV for image-based subtitles
+          --burn-subs               discard soft subtitles after hardsubbing
+
+        Advanced video options:
+          --vp9                     use VP9 instead of VP8
+          --crf                     use constrained quality instead of VBR
+          --no-qmax                 skip first bitrate mode (VBR with qmax)
+          --no-cbr                  skip last bitrate mode (CBR with frame dropping)
+          --bpp BPP                 set custom bpp threshold (def: {self.get_default("bpp_thresh")})
+          --transparency            preserve input transparency
+          --pix-fmt FORMAT          choose color space (def: {self.get_default("pix_fmt")})
+          --min-height HEIGHT       force min. output height (def: {self.get_default("min_height")})
+          --max-height HEIGHT       force max. output height
+          --min-fps FPS             force min. frame rate (def: {self.get_default("min_fps")})
+          --max-fps FPS             force max. frame rate
+
+        Advanced audio options:
+          --opus                    use and allow Opus as audio codec
+          --no-copy                 disable stream copying
+          --force-copy              force-copy compatible (!) audio streams
+          --min-audio RATE          force min. channel bitrate in Kbps (def: {self.get_default("min_audio")})
+          --max-audio RATE          force max. channel bitrate in Kbps
+
+        Misc. options:
+          --no-filter-firstpass     disable user filters during the first pass
+          --ffmpeg-verbosity LEVEL  change FFmpeg command verbosity (def: {self.get_default("ffmpeg_verbosity")})
+          --debug                   only print ffmpeg commands
+
+        All output will be saved in '{self.get_default("out_dir")}/'.
+        '{self.get_default("out_dir")}/' is located in the same directory as the input.
+
+        For more information visit:
+        https://github.com/HelpSeeker/Restricted-WebM/wiki
+        """)
+
+        return help_text
 
 
 class FileInfo:
@@ -589,7 +637,7 @@ class FileConverter:
         info = indent(dedent(f"""
             Curr. size: {round(self.curr_size/1024**2, 2)} MB
             Last size:  {round(self.last_size/1024**2, 2)} MB
-            Best try:   {color}{round(self.best_size/1024**2, 2)}{fgcolors.RESET} MB
+            Best try:   {color}{round(self.best_size/1024**2, 2)}{fgcolors.DEFAULT} MB
             """), "  ")
 
         return info
@@ -713,70 +761,8 @@ def msg(*args, level=1, color=fgcolors.DEFAULT, **kwargs):
     sys.stdout.write(fgcolors.RESET)
 
 
-def usage():
-    """Print help text"""
-    print(dedent(f"""\
-        Usage: {os.path.basename(sys.argv[0])} [OPTIONS] INPUT [INPUT]...
-
-        Input:
-          Absolute or relative path to a video/image
-
-        Common options:
-          -h,  --help               show help
-          -q,  --quiet              suppress non-error output
-          -v,  --verbose            print verbose information
-          -a,  --audio              enable audio output
-          -s,  --size SIZE          limit max. output file size in MB (def: {opts.limit})
-          -f,  --filters FILTERS    use custom ffmpeg filters
-          -p,  --passes {{1,2}}       specify number of passes (def: {opts.passes})
-          -u,  --undershoot RATIO   specify undershoot ratio (def: {opts.under})
-          -i,  --iterations ITER    iterations for each bitrate mode (def: {opts.iters})
-          -t,  --threads THREADS    enable multithreading
-          -ss, --start TIME         start encoding at the specified time
-          -to, --end TIME           end encoding at the specified time
-          -fs, --force-stereo       force stereo audio output
-          -bf, --basic-format       restrict output to one video/audio stream
-
-        Subtitle options:
-          --subtitles               enable subtitle output
-          --mkv-fallback            allow usage of MKV for image-based subtitles
-          --burn-subs               discard soft subtitles after hardsubbing
-
-        Advanced video options:
-          --vp9                     use VP9 instead of VP8
-          --crf                     use constrained quality instead of VBR
-          --no-qmax                 skip the first bitrate mode (VBR with qmax)
-          --no-cbr                  skip the last bitrate mode (CBR with frame dropping)
-          --bpp BPP                 set custom bpp threshold (def: {opts.bpp_thresh})
-          --transparency            preserve input transparency
-          --pix-fmt FORMAT          choose color space (def: {opts.pix_fmt})
-          --min-height HEIGHT       force min. output height (def: {opts.min_height})
-          --max-height HEIGHT       force max. output height
-          --min-fps FPS             force min. frame rate (def: {opts.min_fps})
-          --max-fps FPS             force max. frame rate
-
-        Advanced audio options:
-          --opus                    use and allow Opus as audio codec
-          --no-copy                 disable stream copying
-          --force-copy              force-copy compatible (!) audio streams
-          --min-audio RATE          force min. channel bitrate in Kbps (def: {opts.min_audio})
-          --max-audio RATE          force max. channel bitrate in Kbps
-
-        Misc. options:
-          --no-filter-firstpass     disable user filters during the first pass
-          --ffmpeg-verbosity LEVEL  change FFmpeg command verbosity (def: {opts.ffmpeg_verbosity})
-          --no-color                disable colorized output
-          --debug                   only print ffmpeg commands
-
-        All output will be saved in '{opts.out_dir}/'.
-        '{opts.out_dir}/' is located in the same directory as the input.
-
-        For more information visit:
-        https://github.com/HelpSeeker/Restricted-WebM-in-Bash/wiki"""))
-
-
 def check_prereq():
-    """check existence of required software"""
+    """Test if all required software is installed."""
     reqs = ["ffmpeg", "ffprobe"]
 
     for r in reqs:
@@ -788,256 +774,78 @@ def check_prereq():
             sys.exit(status.DEP)
 
 
-def parse_cli():
-    """Parse command line arguments"""
-    global opts, input_list
+def positive_int(string):
+    """Convert string provided by argparse to a positive int."""
+    try:
+        value = int(string)
+        if value <= 0:
+            raise ValueError
+    except ValueError:
+        error = f"invalid positive int value: {string}"
+        raise argparse.ArgumentTypeError(error)
 
-    if not sys.argv[1:]:
-        usage()
-        sys.exit(0)
-
-    with_arg = ["-s", "--size",
-                "-f", "--filters",
-                "-p", "--passes",
-                "-u", "--undershoot",
-                "-i", "--iterations",
-                "-t", "--threads",
-                "-ss", "--start",
-                "-to", "--end",
-                "--bpp",
-                "--pix-fmt",
-                "--min-height",
-                "--max-height",
-                "--min-fps",
-                "--max-fps",
-                "--min-audio",
-                "--max-audio",
-                "--ffmpeg-verbosity"]
-
-    pos = 1
-    while pos < len(sys.argv):
-        opt = sys.argv[pos]
-        if opt in with_arg:
-            try:
-                arg = sys.argv[pos+1]
-            except IndexError:
-                err(f"Missing value for '{opt}'!")
-                sys.exit(status.OPT)
-
-            pos += 2
-        else:
-            pos += 1
-
-        try:
-            # Common options
-            if opt in ("-h", "--help"):
-                usage()
-                sys.exit(0)
-            elif opt in ("-q", "--quiet"):
-                opts.verbosity = 0
-                opts.ffmpeg_verbosity = "warning"
-            elif opt in ("-v", "--verbose"):
-                opts.verbosity = 2
-            elif opt in ("-a", "--audio"):
-                opts.audio = True
-            elif opt in ("-s", "--size"):
-                opts.limit = float(arg)
-            elif opt in ("-f", "--filters"):
-                opts.f_user = arg
-                opts.user_scale = "scale" in arg
-                opts.user_fps = "fps" in arg
-            elif opt in ("-p", "--passes"):
-                opts.passes = int(arg)
-            elif opt in ("-u", "--undershoot"):
-                opts.under = float(arg)
-            elif opt in ("-i", "--iterations"):
-                opts.iters = int(arg)
-            elif opt in ("-t", "--threads"):
-                opts.threads = int(arg)
-            elif opt in ("-ss", "--start"):
-                opts.global_start = parse_time(arg)
-            elif opt in ("-to", "--end"):
-                opts.global_end = parse_time(arg)
-            elif opt in ("-fs", "--force-stereo"):
-                opts.force_stereo = True
-            elif opt in ("-bf", "--basic-format"):
-                opts.basic_format = True
-            # Subtitle options
-            elif opt == "--subtitles":
-                opts.subs = True
-            elif opt == "--mkv-fallback":
-                opts.mkv_fallback = True
-            elif opt == "--burn-subs":
-                opts.burn_subs = True
-            # Advanced video options
-            elif opt == "--vp9":
-                opts.v_codec = "libvpx-vp9"
-            elif opt == "--crf":
-                opts.crf = True
-            elif opt == "--no-qmax":
-                opts.no_qmax = True
-            elif opt == "--no-cbr":
-                opts.no_cbr = True
-            elif opt == "--bpp":
-                opts.bpp_thresh = float(arg)
-            elif opt == "--transparency":
-                opts.transparency = True
-                opts.pix_fmt = "yuva420p"
-            elif opt == "--pix-fmt":
-                opts.pix_fmt = arg
-            elif opt == "--min-height":
-                opts.min_height = int(arg)
-            elif opt == "--max-height":
-                opts.max_height = int(arg)
-            elif opt == "--min-fps":
-                opts.min_fps = float(arg)
-            elif opt == "--max-fps":
-                opts.max_fps = float(arg)
-            # Advanced audio options
-            elif opt == "--opus":
-                opts.a_codec = "libopus"
-            elif opt == "--no-copy":
-                opts.no_copy = True
-            elif opt == "--force-copy":
-                opts.force_copy = True
-            elif opt == "--min-audio":
-                opts.min_audio = int(arg)
-            elif opt == "--max-audio":
-                opts.max_audio = int(arg)
-            # Misc. options
-            elif opt == "--no-filter-firstpass":
-                opts.no_filter_firstpass = True
-            elif opt == "--ffmpeg-verbosity":
-                opts.ffmpeg_verbosity = arg
-            elif opt == "--no-color":
-                opts.color = False
-            elif opt == "--debug":
-                opts.debug = True
-            # Files and unknown arguments
-            elif fnmatch(opt, "-*"):
-                err(f"Unknown flag '{opt}'!")
-                err(f"Try '{os.path.basename(sys.argv[0])} --help' for more information.")
-                sys.exit()
-            else:
-                if os.path.isfile(opt):
-                    input_list.append(os.path.abspath(opt))
-                else:
-                    err(f"'{opt}' is no valid file.")
-                    sys.exit()
-        except ValueError:
-            err(f"Invalid {opt} ('{arg}')!")
-            sys.exit(status.OPT)
-
-    # Additional option-independent steps
-    opts.max_size = int(opts.limit*1024**2)
-    opts.min_size = int(opts.limit*1024**2*opts.under)
+    return value
 
 
-def check_options():
-    """Check validity of command line options"""
-    # Check for input files
-    if not input_list:
-        err("No input files specified.", color=fgcolors.WARNING)
-        sys.exit(status.OPT)
-    for i in input_list:
-        name = os.path.basename(i)
-        name = os.path.splitext(name)[0]
-        if name == opts.temp_name:
-            err(f"{i} has reserved filename!")
-            sys.exit(status.DEP)
+def positive_float(string):
+    """Convert string provided by argparse to a positive float."""
+    try:
+        value = float(string)
+        if value <= 0:
+            raise ValueError
+    except ValueError:
+        error = f"invalid positive float value: {string}"
+        raise argparse.ArgumentTypeError(error)
 
-    # Special integer checks
-    if opts.passes not in (1, 2):
-        err("Only 1 or 2 passes are supported!")
-        sys.exit(status.OPT)
-    elif opts.iters < 1:
-        err("Script needs at least 1 iteration per mode!")
-        sys.exit(status.OPT)
-    elif opts.min_height <= 0:
-        err("Min. height must be greater than 0!")
-        sys.exit(status.OPT)
-    elif opts.max_height and opts.max_height < opts.min_height:
-        err("Max. height can't be less than min. height!")
-        sys.exit(status.OPT)
-    elif opts.threads <= 0:
-        err("Thread count must be larger than 0!")
-        sys.exit(status.OPT)
-    elif opts.threads > 16:
-        # Just a warning
-        err("More than 16 threads are not recommended.", color=fgcolors.WARNING)
-    elif opts.max_audio and opts.max_audio < 6:
-        err("Max. audio channel bitrate must be greater than 6 Kbps!")
-        sys.exit(status.OPT)
-    elif opts.max_audio and opts.max_audio < opts.min_audio:
-        err("Max. audio channel bitrate can't be less than min. audio channel bitrate!")
-        sys.exit(status.OPT)
-
-    # Special float checks
-    if opts.limit <= 0:
-        err("Target file size must be greater than 0!")
-        sys.exit(status.OPT)
-    elif opts.global_end and opts.global_end <= 0:
-        err("End time must be greater than 0!")
-        sys.exit(status.OPT)
-    elif opts.global_start and opts.global_end and \
-         opts.global_end <= opts.global_start:
-        err("End time must be greater than start time!")
-        sys.exit(status.OPT)
-    elif opts.under > 1:
-        err("Undershoot ratio can't be greater than 1!")
-        sys.exit(status.OPT)
-    elif opts.bpp_thresh <= 0:
-        err("Bits per pixel threshold must be greater than 0!")
-        sys.exit(status.OPT)
-    elif opts.max_fps and opts.max_fps < 1:
-        err("Max. frame rate can't be less than 1!")
-        sys.exit(status.OPT)
-    elif opts.max_fps and opts.max_fps < opts.min_fps:
-        err("Max. frame rate can't be less than min. frame rate!")
-        sys.exit(status.OPT)
-
-    # Check for mutually exclusive flags
-    if opts.force_copy and opts.no_copy:
-        err("--force-copy and --no-copy are mutually exclusive!")
-        sys.exit(status.OPT)
-
-    # Misc. checks
-    if opts.transparency and opts.pix_fmt != "yuva420p":
-        err("Only yuva420p supports transparency!")
-        sys.exit(status.OPT)
-
-    vp8_pix_fmt = ["yuv420p", "yuva420p"]
-    vp9_pix_fmt = ["yuv420p", "yuva420p",
-                   "yuv422p", "yuv440p", "yuv444p",
-                   "yuv420p10le", "yuv422p10le", "yuv440p10le", "yuv444p10le",
-                   "yuv420p12le", "yuv422p12le", "yuv440p12le", "yuv444p12le",
-                   "gbrp", "gbrp10le", "gbrp12le"]
-
-    if opts.v_codec == "libvpx" and opts.pix_fmt not in vp8_pix_fmt:
-        err(f"'{opts.pix_fmt}' isn't supported by VP8!")
-        err("See 'ffmpeg -h encoder=libvpx' for more infos.")
-        sys.exit(status.OPT)
-    elif opts.v_codec == "libvpx-vp9" and opts.pix_fmt not in vp9_pix_fmt:
-        err(f"'{opts.pix_fmt}' isn't supported by VP9!")
-        err("See 'ffmpeg -h encoder=libvpx-vp9' for more infos.")
-        sys.exit(status.OPT)
-
-    loglevels = ["quiet", "panic", "fatal",
-                 "error", "warning", "info",
-                 "verbose", "debug", "trace",
-                 "stats"]
-
-    if opts.ffmpeg_verbosity not in loglevels:
-        err(f"'{opts.ffmpeg_verbosity}' isn't a supported FFmpeg verbosity level!")
-        err("Supported levels:")
-        err(loglevels)
-        sys.exit(status.OPT)
+    return value
 
 
-def check_filters():
+def valid_time(string):
+    """Convert string provided by argparse to time in seconds."""
+    # Just test validity with FFmpeg (reasonable fast even for >1h durations)
+    command = ["ffmpeg", "-v", "quiet",
+               "-f", "lavfi", "-i", "anullsrc",
+               "-t", string, "-c", "copy",
+               "-f", "null", "-"]
+    try:
+        subprocess.check_call(command)
+    except subprocess.CalledProcessError:
+        error = f"invalid FFmpeg time syntax: {string}"
+        raise argparse.ArgumentTypeError(error)
+
+    # Split into h, m and s
+    time = [float(t) for t in string.split(":")]
+    if len(time) == 3:
+        sec = 3600*time[0] + 60*time[1] + time[2]
+    elif len(time) == 2:
+        sec = 60*time[0] + time[1]
+    elif len(time) == 1:
+        sec = time[0]
+
+    if sec <= 0:
+        error = f"invalid positive time value: {string}"
+        raise argparse.ArgumentTypeError(error)
+
+    return sec
+
+
+def valid_file(string):
+    """Convert string provided by argparse to valid file path."""
+    path = os.path.abspath(string)
+    if not os.path.exists(path):
+        error = f"file doesn't exist: {path}"
+        raise argparse.ArgumentTypeError(error)
+    if not os.path.isfile(path):
+        error = f"not a regular file: {path}"
+        raise argparse.ArgumentTypeError(error)
+
+    return path
+
+
+def analyze_filters(filters):
     """Test user set filters"""
-    if not opts.f_user:
-        return
+    if not filters:
+        return (False, False)
 
     # existing filters let copy fail
     # only crude test; stream specifiers will let it fail as well
@@ -1045,51 +853,207 @@ def check_filters():
                "-f", "lavfi", "-i", "nullsrc",
                "-f", "lavfi", "-i", "anullsrc",
                "-t", "1", "-c:v", "copy",
-               "-filter_complex", opts.f_user,
+               "-filter_complex", filters,
                "-f", "null", "-"]
     try:
         subprocess.check_call(command)
+        video = False
     except subprocess.CalledProcessError:
-        opts.f_video = True
+        video = True
 
     command = ["ffmpeg", "-v", "quiet",
                "-f", "lavfi", "-i", "nullsrc",
                "-f", "lavfi", "-i", "anullsrc",
                "-t", "1", "-c:a", "copy",
-               "-filter_complex", opts.f_user,
+               "-filter_complex", filters,
                "-f", "null", "-"]
     try:
         subprocess.check_call(command)
+        audio = False
     except subprocess.CalledProcessError:
-        opts.f_audio = True
+        audio = True
+
+    return (video, audio)
 
 
-def parse_time(in_time):
-    """Parse input time syntax and check for validity"""
-    # Check FFmpeg support
-    # Easiest to just test it with ffmpeg (reasonable fast even for >1h durations)
-    command = ["ffmpeg", "-v", "quiet",
-               "-f", "lavfi", "-i", "anullsrc",
-               "-t", in_time, "-c", "copy",
-               "-f", "null", "-"]
-    try:
-        subprocess.check_call(command)
-    except subprocess.CalledProcessError:
-        err(f"Invalid time ('{in_time}')! For the supported syntax see:")
-        err("https://ffmpeg.org/ffmpeg-utils.html#time-duration-syntax")
+def parse_cli():
+    """Parse command line arguments."""
+    defaults = DefaultOptions()
+    parser = CustomArgumentParser(usage="%(prog)s [OPTIONS] INPUT [INPUT]...")
+
+    # Input
+    parser.add_argument("files", nargs="+", type=valid_file)
+    # Common Options
+    verbosity = parser.add_mutually_exclusive_group()
+    verbosity.add_argument("-q", "--quiet", dest="verbosity", action="store_const",
+                           const=0, default=defaults.verbosity)
+    verbosity.add_argument("-v", "--verbose", dest="verbosity", action="store_const",
+                           const=2, default=defaults.verbosity)
+    parser.add_argument("-a", "--audio", action="store_true",
+                        default=defaults.audio)
+    parser.add_argument("-s", "--size", dest="limit", type=positive_float,
+                        default=defaults.limit)
+    parser.add_argument("-f", "--filters", dest="f_user",
+                        default=defaults.f_user)
+    parser.add_argument("-p", "--passes", type=int, default=defaults.passes,
+                        choices=[1, 2])
+    parser.add_argument("-u", "--undershoot", dest="under", type=float,
+                        default=defaults.under)
+    parser.add_argument("-i", "--iterations", dest="iters", type=positive_int,
+                        default=defaults.iters)
+    parser.add_argument("-t", "--threads", type=positive_int,
+                        default=defaults.threads)
+    parser.add_argument("-ss", "--start", dest="global_start", type=valid_time,
+                        default=defaults.global_start)
+    parser.add_argument("-to", "--end", dest="global_end", type=valid_time,
+                        default=defaults.global_end)
+    parser.add_argument("-fs", "--force-stereo", action="store_true",
+                        default=defaults.force_stereo)
+    parser.add_argument("-bf", "--basic-format", action="store_true",
+                        default=defaults.basic_format)
+    # Subtitle Options
+    parser.add_argument("--subtitles", dest="subs", action="store_true",
+                        default=defaults.subs)
+    parser.add_argument("--mkv-fallback", action="store_true",
+                        default=defaults.mkv_fallback)
+    parser.add_argument("--burn-subs", action="store_true",
+                        default=defaults.burn_subs)
+    # Advanced Video Options
+    parser.add_argument("--vp9", dest="v_codec", action="store_const",
+                        const="libvpx-vp9", default=defaults.v_codec)
+    parser.add_argument("--crf", action="store_true", default=defaults.crf)
+    parser.add_argument("--no-qmax", action="store_true",
+                        default=defaults.no_qmax)
+    parser.add_argument("--no-cbr", action="store_true",
+                        default=defaults.no_cbr)
+    parser.add_argument("--bpp", dest="bpp_thresh", type=positive_float,
+                        default=defaults.bpp_thresh)
+    parser.add_argument("--transparency", action="store_true",
+                        default=defaults.transparency)
+    parser.add_argument(
+        "--pix-fmt", default=defaults.pix_fmt,
+        choices=[
+            "yuv420p", "yuva420p",
+            "yuv422p", "yuv440p", "yuv444p",
+            "yuv420p10le", "yuv422p10le", "yuv440p10le", "yuv444p10le",
+            "yuv420p12le", "yuv422p12le", "yuv440p12le", "yuv444p12le",
+            "gbrp", "gbrp10le", "gbrp12le",
+        ]
+    )
+    parser.add_argument("--min-height", type=positive_int,
+                        default=defaults.min_height)
+    parser.add_argument("--max-height", type=positive_int,
+                        default=defaults.max_height)
+    parser.add_argument("--min-fps", type=positive_float,
+                        default=defaults.min_fps)
+    parser.add_argument("--max-fps", type=positive_float,
+                        default=defaults.max_fps)
+    # Advanced Audio Options
+    parser.add_argument("--opus", dest="a_codec", action="store_const",
+                        const="libopus", default=defaults.a_codec)
+    copy_action = parser.add_mutually_exclusive_group()
+    copy_action.add_argument("--no-copy", action="store_true",
+                             default=defaults.no_copy)
+    copy_action.add_argument("--force-copy", action="store_true",
+                             default=defaults.force_copy)
+    parser.add_argument("--min-audio", type=positive_int,
+                        default=defaults.min_audio)
+    parser.add_argument("--max-audio", type=positive_int,
+                        default=defaults.max_audio)
+    # Misc. Options
+    parser.add_argument("--no-filter-firstpass", action="store_true",
+                        default=defaults.no_filter_firstpass)
+    parser.add_argument(
+        "--ffmpeg-verbosity", default=defaults.ffmpeg_verbosity,
+        choices=[
+            "quiet", "panic", "fatal",
+            "error", "warning", "info",
+            "verbose", "debug", "trace",
+            "stats",
+        ]
+    )
+    parser.add_argument("--debug", action="store_true", default=defaults.debug)
+
+    # Advanced User Options
+    parser.set_defaults(
+        fps_list=[60, 30, 25, 24, 22, 20, 18, 16, 14, 12, 10, 8, 6, 4, 2, 1],
+        audio_test_dur=60,            # 0 for whole stream -> exact bitrate
+        fallback_bitrate=1,           # Must be >0
+        height_reduction=-10,         # Must be <0
+        min_quality=50,
+        crf_value=10,
+        min_bitrate_ratio=0.9,
+        skip_limit=0.01,
+        a_factor=5.5,
+        fallback_codec="libvorbis",
+        temp_name="temp",
+        out_dir="webm_done",
+    )
+
+    args = parser.parse_args()
+
+    # Store size limits in Bytes
+    args.max_size = int(args.limit*1024**2)
+    args.min_size = int(args.limit*1024**2*args.under)
+    # Scan user filter-string for the scale and fps filter
+    args.user_scale = bool(args.f_user and "scale" in args.f_user)
+    args.user_fps = bool(args.f_user and "fps" in args.f_user)
+    # Set pixel format according to transparency flag
+    # Makes sure that --transparency overwrites --pix-fmt
+    if args.transparency:
+        args.pix_fmt = "yuva420p"
+    # Check type of applied user filters
+    args.f_video, args.f_audio = analyze_filters(args.f_user)
+
+    return args
+
+
+def additional_checks():
+    """Check for invalid options that aren't detected by argparse."""
+    # Temp name check
+    for f in opts.files:
+        name = os.path.basename(f)
+        name = os.path.splitext(name)[0]
+        if name == opts.temp_name:
+            err(f"{f} has reserved filename!")
+            sys.exit(status.DEP)
+
+    # Warn againts excessive thread usage as FFmpeg would do it
+    # In reality VP8 encoding doesn't even scale well beyond 4-6 threads
+    if opts.threads > 16:
+        err("More than 16 threads are not recommended.", color=fgcolors.WARNING)
+
+    # Special integer checks
+    if opts.max_height and opts.max_height < opts.min_height:
+        err("Max. height can't be less than min. height!")
+        sys.exit(status.OPT)
+    elif opts.max_audio and opts.max_audio < 6:
+        err("Max. audio channel bitrate must be greater than 6 Kbps!")
+        sys.exit(status.OPT)
+    elif opts.max_audio and opts.max_audio < opts.min_audio:
+        err("Max. audio channel bitrate can't be less than min. audio channel bitrate!")
+        sys.exit(status.OPT)
+    # Special float checks
+    elif opts.global_start and opts.global_end and \
+         opts.global_end <= opts.global_start:
+        err("End time must be greater than start time!")
+        sys.exit(status.OPT)
+    elif not 0 <= opts.under <= 1:
+        err("Undershoot must be in range [0,1]!")
+        sys.exit(status.OPT)
+    elif opts.max_fps and opts.max_fps < 1 or opts.min_fps < 1:
+        err("Frame rates can't be less than 1!")
+        sys.exit(status.OPT)
+    elif opts.max_fps and opts.max_fps < opts.min_fps:
+        err("Max. frame rate can't be less than min. frame rate!")
         sys.exit(status.OPT)
 
-    # Split into h, m and s
-    in_time = in_time.split(":")
-    in_time = [float(t) for t in in_time]
-    if len(in_time) == 3:
-        time_in_sec = 3600*in_time[0] + 60*in_time[1] + in_time[2]
-    elif len(in_time) == 2:
-        time_in_sec = 60*in_time[0] + in_time[1]
-    elif len(in_time) == 1:
-        time_in_sec = in_time[0]
-
-    return time_in_sec
+    vp8_pix_fmt = ["yuv420p", "yuva420p"]
+    if opts.v_codec == "libvpx" and opts.pix_fmt not in vp8_pix_fmt:
+        err(f"'{opts.pix_fmt}' isn't supported by VP8!")
+        err("See 'ffmpeg -h encoder=libvpx' for more infos.",
+            color=fgcolors.DEFAULT)
+        sys.exit(status.OPT)
 
 
 def choose_audio_bitrate(factor):
@@ -1329,22 +1293,16 @@ def clean():
 
 def main():
     """Main function body"""
-    check_prereq()
-    parse_cli()
-    if not opts.color:
-        fgcolors.disable()
-    check_options()
-    check_filters()
     print_options()
 
     msg("\n### Start conversion ###\n", level=2, color=fgcolors.HEADER)
     restrictor = FileConverter()
 
-    for i, path in enumerate(input_list):
+    for i, path in enumerate(opts.files, start=1):
         resolve_path(path)
         video = ConvertibleFile(FileInfo(path))
 
-        msg(f"File {fgcolors.FILE}{i+1}{fgcolors.DEFAULT} (of {len(input_list)}): "
+        msg(f"File {fgcolors.FILE}{i}{fgcolors.DEFAULT} (of {len(opts.files)}): "
             f"{fgcolors.FILE}{video.info.input}{fgcolors.DEFAULT}")
 
         if video.info.ext == "mkv" and not opts.mkv_fallback:
@@ -1388,8 +1346,9 @@ def main():
 
 # Execute main function
 if __name__ == '__main__':
-    opts = Options()
-    input_list = []
+    check_prereq()
+    opts = parse_cli()
+    additional_checks()
 
     try:
         main()
