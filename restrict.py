@@ -7,6 +7,20 @@ import subprocess
 import sys
 from textwrap import dedent, indent
 
+# ANSI escape codes don't work on Windows, unless the user jumps through
+# additional hoops (either by using 3rd-party software or enabling VT100
+# emulation with Windows 10)
+# colorama solves this issue by converting ANSI escape codes into the
+# appropriate win32 calls (only on Windows)
+# If colorama isn't available, disable colorized output on Windows
+colors = True
+try:
+    import colorama
+    colorama.init()
+except ModuleNotFoundError:
+    if os.name == "nt":
+        colors = False
+
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Global constants
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -50,8 +64,10 @@ class Colors:
 
 # Create objects to hold constants
 status = ExitCodes()
-fgcolors = Colors()
 size_fail = False
+fgcolors = Colors()
+if not colors:
+    fgcolors.disable()
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Classes
@@ -218,7 +234,7 @@ class CustomArgumentParser(argparse.ArgumentParser):
         help_text = dedent(f"""\
         RestrictedWebM is a script to produce WebMs within a certain size range.
 
-        {self.prog} [OPTIONS] INPUT [INPUT]...
+        Usage: {self.prog} [OPTIONS] INPUT [INPUT]...
 
         Input:
           Absolute or relative path to a video/image
