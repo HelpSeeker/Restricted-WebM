@@ -286,7 +286,10 @@ class FileInfo:
         """Initialize all properties."""
         # Path-related
         self.input = in_path
-        self.ext, self.output, self.temp = self.gather_paths()
+        self.ext = f"{'mkv' if out_image_subs(self.input) else 'webm'}"
+        self.name = os.path.splitext(os.path.basename(self.input))[0]
+        self.output = f"{self.name}.{self.ext}"
+        self.temp = f"{self.name}_{opts.suffix}.{self.ext}"
 
         command = [
             "ffprobe", "-v", "error", "-show_format", "-show_streams",
@@ -314,28 +317,17 @@ class FileInfo:
         self.out_height = self.in_height
         self.out_fps = self.in_fps
 
-    def gather_paths(self):
-        """Gather all necessary infos regarding output paths."""
-        name = os.path.basename(self.input)
-        name = os.path.splitext(name)[0]
-
-        ext = f"{'mkv' if out_image_subs(self.input) else 'webm'}"
-        out = f"{name}.{ext}"
-        temp = f"{opts.temp_name}.{ext}"
-
-        return (ext, out, temp)
-
     def brute_input_duration(self):
         """Brute-force detect input duration for GIFs and other images."""
         # Encodes input as AVC (fast) and reads duration from the output
         ffmpeg = [
             "ffmpeg", "-y", "-v", "error", "-i", self.input, "-map", "0:v",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "51",
-            opts.temp_name + ".mkv"
+            f"{self.name}_{opts.suffix}_.mkv"
         ]
         ffprobe = [
             "ffprobe", "-v", "error", "-show_format", "-show_streams",
-            "-print_format", "json", f"{opts.temp_name}.mkv"
+            "-print_format", "json", f"{self.name}_{opts.suffix}.mkv"
         ]
 
         subprocess.run(ffmpeg)
@@ -399,11 +391,11 @@ class FileInfo:
         if opts.user_scale or opts.user_fps:
             ffmpeg = [
                 "ffmpeg", "-y", "-v", "error", "-i", self.input, "-vframes", "1",
-                "-filter_complex", opts.f_user, f"{opts.temp_name}.mkv"
+                "-filter_complex", opts.f_user, f"{self.name}_{opts.suffix}.mkv"
             ]
             ffprobe = [
                 "ffprobe", "-v", "error", "-show_format", "-show_streams",
-                "-print_format", "json", f"{opts.temp_name}.mkv"
+                "-print_format", "json", f"{self.name}_{opts.suffix}.mkv"
             ]
 
             subprocess.run(ffmpeg)
@@ -551,7 +543,7 @@ class ConvertibleFile:
         a_streams = [i for i in range(len(self.info.a_list))
                      if opts.audio and not (opts.basic_format and i > 0)]
         for s in a_streams:
-            if audio_copy(self.info.input, s, self.info.a_list[s]):
+            if audio_copy(self, s):
                 audio.extend([f"-c:a:{s}", "copy"])
             elif opts.a_codec == "libopus" and opus_fallback(self.info.input, s):
                 audio.extend([f"-c:a:{s}", opts.fallback_codec])
@@ -653,9 +645,11 @@ class ConvertibleFile:
         if opts.passes == 1 or mode == 3:
             output = ["-cpu-used", "0", self.info.temp]
         elif ff_pass == 1:
-            output = ["-cpu-used", "5", "-pass", "1", "-f", "null", "-"]
+            output = ["-cpu-used", "5", "-passlogfile", self.info.name,
+                      "-pass", "1", "-f", "null", "-"]
         elif ff_pass == 2:
-            output = ["-cpu-used", "0", "-pass", "2", self.info.temp]
+            output = ["-cpu-used", "0", "-passlogfile", self.info.name,
+                      "-pass", "2", self.info.temp]
 
         command = ["ffmpeg", "-y"]
         command.extend(self.verbosity)
@@ -1089,7 +1083,7 @@ def parse_cli():
         skip_limit=0.01,
         a_factor=5.5,
         fallback_codec="libvorbis",
-        temp_name="temp",
+        suffix="temp",
         out_dir="webm_done",
     )
 
@@ -1113,14 +1107,6 @@ def parse_cli():
 
 def additional_checks():
     """Check for invalid options that aren't detected by argparse."""
-    # Temp name check
-    for f in opts.files:
-        name = os.path.basename(f)
-        name = os.path.splitext(name)[0]
-        if name == opts.temp_name:
-            err(f"{f} has reserved filename!")
-            sys.exit(status.DEP)
-
     # Warn againts excessive thread usage as FFmpeg would do it
     # In reality VP8 encoding doesn't even scale well beyond 4-6 threads
     if opts.threads > 16:
@@ -1197,7 +1183,7 @@ def print_options():
 
     msg(dedent(f"""\
         Paths:
-          Temporary filename:          {opts.temp_name}
+          Suffix for temporary files:  {opts.suffix}
           Destination directory name:  {opts.out_dir}
 
         Size:
@@ -1269,7 +1255,7 @@ def resolve_path(in_path):
     os.chdir(out_dir)
 
 
-def audio_copy(in_file, stream, out_rate):
+def audio_copy(video, stream):
     """Decide if input audio stream should be copied"""
     if opts.global_start or opts.f_audio or opts.no_copy:
         return False
@@ -1280,21 +1266,22 @@ def audio_copy(in_file, stream, out_rate):
     if opts.audio_test_dur:
         copy_dur = ["-t", str(opts.audio_test_dur)]
 
-    command = ["ffmpeg", "-y", "-v", "error", "-i", in_file]
+    command = ["ffmpeg", "-y", "-v", "error", "-i", video.info.input]
     command.extend(copy_dur)
-    command.extend(["-map", "0:a:" + str(stream),
-                    "-c", "copy", opts.temp_name + ".mkv"])
+    command.extend(["-map", f"0:a:{stream}", "-c", "copy",
+                    f"{video.info.name}_{opts.suffix}.mkv"])
     subprocess.run(command)
 
     command = ["ffprobe", "-v", "error",
                "-show_format", "-show_streams",
                "-print_format", "json",
-               opts.temp_name + ".mkv"]
-    out_json = subprocess.run(command, stdout=subprocess.PIPE).stdout
-    out_json = json.loads(out_json)
+               f"{video.info.name}_{opts.suffix}.mkv"]
+    info = subprocess.run(command, stdout=subprocess.PIPE).stdout
+    info = json.loads(info)
 
-    in_rate = int(out_json['format']['bit_rate'])
-    in_codec = out_json['streams'][0]['codec_name']
+    in_rate = int(info['format']['bit_rate'])
+    in_codec = info['streams'][0]['codec_name']
+    out_rate = video.info.a_list[stream]
 
     codecs = ["vorbis"]
     if opts.a_codec == "libopus":
@@ -1381,14 +1368,13 @@ def call_ffmpeg(video, mode):
             break
 
 
-def clean():
+def clean(video):
     """Clean leftover file in the workspace"""
-    for ext in [".webm", ".mkv"]:
-        if os.path.exists(opts.temp_name + ext):
-            os.remove(opts.temp_name + ext)
-    if opts.passes == 2:
-        if os.path.exists("ffmpeg2pass-0.log"):
-            os.remove("ffmpeg2pass-0.log")
+    for f in [f"{video.info.name}_{opts.suffix}.{e}" for e in ["webm", "mkv"]]:
+        if os.path.exists(f):
+            os.remove(f)
+    if opts.passes == 2 and os.path.exists(f"{video.info.name}-0.log"):
+        os.remove(f"{video.info.name}-0.log")
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # Main script
@@ -1411,7 +1397,7 @@ def main():
         if video.info.ext == "mkv" and not opts.mkv_fallback:
             err(f"{video.info.input}: "
                 "Conversion of image-based subtitles not supported!")
-            clean()
+            clean(video)
             continue
 
         # Check for basic stream order assumptions
@@ -1441,10 +1427,11 @@ def main():
             """), "  "),
             level=2)
 
-        restrictor.process(video)
-        restrictor.reset()
-
-        clean()
+        try:
+            restrictor.process(video)
+            restrictor.reset()
+        finally:
+            clean(video)
 
 
 # Execute main function
@@ -1457,7 +1444,6 @@ if __name__ == '__main__':
         main()
     except KeyboardInterrupt:
         err("\nUser Interrupt!", color=fgcolors.WARNING)
-        clean()
         sys.exit(status.INT)
 
     msg("\n### Finished ###\n", level=2, color=fgcolors.HEADER)
