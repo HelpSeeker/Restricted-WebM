@@ -1201,14 +1201,14 @@ def print_options():
           Destination directory name:  {opts.out_dir}
 
         Size:
-          Max. size (MB):              {opts.limit}
+          Max. size:                   {opts.limit} MB
           Undershoot ratio:            {opts.under}
-          Max. size (Bytes):           {opts.max_size}
-          Min. size (Bytes):           {opts.min_size}
+          Max. size:                   {opts.max_size} Bytes
+          Min. size:                   {opts.min_size} Bytes
 
         Trimming:
-          Start time (sec):            {opts.global_start if opts.global_start else "-"}
-          End time (sec):              {opts.global_end if opts.global_end else "-"}
+          Start time:                  {f'{opts.global_start} sec' if opts.global_start else None}
+          End time:                    {f'{opts.global_end} sec' if opts.global_end else None}
 
         Video:
           Encoder:                     {opts.v_codec}
@@ -1218,7 +1218,7 @@ def print_options():
           Use CQ instead of VBR:       {opts.crf}
           CRF:                         {opts.crf_value}
           qmax:                        {opts.min_quality}
-          Fallback bitrate (Kbps):     {opts.fallback_bitrate}
+          Fallback bitrate:            {opts.fallback_bitrate} Kbps
           Skip VBR with min. quality:  {opts.no_qmax}
           Skip CBR:                    {opts.no_cbr}
           Iterations/bitrate mode:     {opts.iters}
@@ -1230,15 +1230,15 @@ def print_options():
           Encoder:                     {opts.a_codec}
           Fallback encoder:            {opts.fallback_codec}
           Force stereo:                {opts.force_stereo}
-          Min. channel bitrate (Kbps): {opts.min_audio}
-          Max. channel bitrate (Kbps): {opts.max_audio if opts.max_audio else "-"}
+          Min. channel bitrate:        {opts.min_audio} Kbps
+          Max. channel bitrate:        {f'{opts.max_audio} Kbps' if opts.max_audio else None}
           Stream copying disabled:     {opts.no_copy}
           Ignore bitrate for copying:  {opts.force_copy}
-          Bitrate test duration (sec): {opts.audio_test_dur}
+          Bitrate test duration:       {f'{opts.audio_test_dur} sec' if opts.audio_test_dur else 'full duration'}
           Audio factor:                {opts.a_factor}
 
         Subtitles:
-          Subtitle support:            {True if opts.subs or opts.burn_subs else False}
+          Subtitle support:            {opts.subs or opts.burn_subs}
           MKV as fallback:             {opts.mkv_fallback}
           Discard after hardsubbing:   {opts.burn_subs}
 
@@ -1247,12 +1247,12 @@ def print_options():
           Contains video filters:      {opts.f_video}
           Contains audio filters:      {opts.f_audio}
           Omit during 1st pass:        {opts.no_filter_firstpass}
-          BPP threshold:               {opts.bpp_thresh}
+          BPP threshold:               {opts.bpp_thresh} bpp
           Min. height threshold:       {opts.min_height}
-          Max. height threshold:       {opts.max_height if opts.max_height else "-"}
+          Max. height threshold:       {opts.max_height if opts.max_height else None}
           Height reduction step:       {opts.height_reduction}
-          Min. frame rate threshold:   {opts.min_fps}
-          Max. frame rate threshold:   {opts.max_fps if opts.max_fps else "-"}
+          Min. frame rate threshold:   {opts.min_fps} fps
+          Max. frame rate threshold:   {f'{opts.max_fps} fps' if opts.max_fps else None}
           Possible frame rates:        {', '.join([str(f) for f in opts.fps_list])}
 
         Misc.:
