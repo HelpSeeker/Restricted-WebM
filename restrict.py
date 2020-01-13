@@ -517,7 +517,7 @@ class ConvertibleFile:
 
         # Map-related
         self.map = ["-map", "0:v"]
-        if opts.subs:
+        if opts.subs or opts.burn_subs:
             self.map.extend(["-map", "0:s?"])
         if opts.audio:
             a_streams = [
@@ -529,14 +529,14 @@ class ConvertibleFile:
                 self.map.extend(s)
 
         # Subtitle-related
-        if not opts.subs:
-            self.subs = []
-        elif opts.burn_subs:
+        if opts.burn_subs:
             self.subs = ["-sn"]
         elif out_image_subs(self.info.input):
             self.subs = ["-c:s", "copy"]
-        else:
+        elif opts.subs:
             self.subs = ["-c:s", "webvtt"]
+        else:
+            self.subs = []
 
         # Audio-related
         self.audio = self.init_audio_flags()
@@ -1238,7 +1238,7 @@ def print_options():
           Audio factor:                {opts.a_factor}
 
         Subtitles:
-          Subtitle support:            {opts.subs}
+          Subtitle support:            {True if opts.subs or opts.burn_subs else False}
           MKV as fallback:             {opts.mkv_fallback}
           Discard after hardsubbing:   {opts.burn_subs}
 
