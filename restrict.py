@@ -1293,7 +1293,7 @@ def audio_copy(in_file, stream, out_rate):
     out_json = subprocess.run(command, stdout=subprocess.PIPE).stdout
     out_json = json.loads(out_json)
 
-    in_rate = out_json['format']['bit_rate']
+    in_rate = int(out_json['format']['bit_rate'])
     in_codec = out_json['streams'][0]['codec_name']
 
     codecs = ["vorbis"]
@@ -1301,7 +1301,7 @@ def audio_copy(in_file, stream, out_rate):
         codecs.append("opus")
 
     # *1.05 since bitrate allocation is no exact business
-    if in_codec in codecs and opts.force_copy and in_rate <= out_rate*1000*1.05:
+    if in_codec in codecs and (opts.force_copy or in_rate <= out_rate*1000*1.05):
         return True
 
     return False
