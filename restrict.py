@@ -60,50 +60,153 @@ size_fail = False
 class DefaultOptions:
     """Stores general options"""
 
-    # Common Options
+    # Set output verbosity
+    #   0 -> quiet mode (only warnings and errors)
+    #   1 -> default mode (0 + basic progress information)
+    #   2 -> verbose mode (0 + 1 + FFmpeg options + size info)
     verbosity = 1
+
+    # Enable audio output
+    # Converts all available audio streams by default
+    # Only has an effect, when the input comes with at least one audio stream
     audio = False
+
+    # Upper size limit in MB
     limit = 3
-    max_size = int(limit*1024**2)
+
+    # FFmpeg filter string (https://ffmpeg.org/ffmpeg-filters.html)
+    # Gets passed directly to FFmpeg (and will throw errors if wrong)
     f_user = None
+
+    # Number of passes to use during 1st and 2nd bitrate mode
+    # (CBR will always be done with a single pass)
+    #   1 -> only really useful for more consistent quality for very low bitrate
+    #        encodes or when converting GIFs while preserving transparency
+    #   2 -> should always be preferred as libvpx doesn't offer effective
+    #        bitrate control for single pass encodes
     passes = 2
+
+    # Lower size limit as percentage of the upper one
+    # 0 to disable, >0.95 (or >0.9 with --crf) is discouraged
     under = 0.75
-    min_size = int(limit*1024**2*under)
+
+    # How many attempts to make for each bitrate mode
+    # This is an upper limit, the remaining attempts of a mode may be skipped
+    # if the file size doesn't change enough (<1%)
     iters = 3
+
+    # How many threads libvpx should use
+    # FFmpeg discourages >16, but VP8 encoding doesn't scale well beyond 4-6
     threads = 1
+
+    # How to trim the input video (same as FFmpeg's -ss and -to)
+    # Values must be in seconds (int/float) or need to be passed to valid_time()
+    # Negative time values aren't supported
     global_start = None
     global_end = None
+
+    # Force 2 channels per audio stream
+    # Useful to avoid wasting bitrate on surround sound or to use libopus
+    # for otherwise unsupported channel configurations
+    # IMPORTANT: Also force-converts mono input to stereo
     force_stereo = False
+
+    # Limit the output to 1 video + 1 audio stream (no effect on subtitles)
     basic_format = False
 
-    # Subtitle Options
+    # Enable subtitle output
+    # Input with image-based subtitles will be skipped by default
     subs = False
+
+    # Use MKV as fallback container for input with image-based subtitles,
+    # instead of skipping the files entirely
+    # Has no effect if subtitle output is disabled
     mkv_fallback = False
+
+    # Map input subtitles, but disable subtitle output
+    # Useful to prevent unnecessary soft subs in the output while hardsubbing
     burn_subs = False
 
-    # Advanced Video Options
+    # What video encoder to use
+    #   libvpx     -> VP8
+    #   libvpv-vp9 -> VP9
+    # AV1 (via libaom or libsvt_av1) isn't supported
     v_codec = "libvpx"
+
+    # Use CQ (constrained quality) instead of classic VBR
     crf = False
+
+    # Skip 1st bitrate mode (VBR or CQ + min. quality)
     no_qmax = False
+
+    # Skip 3rd bitrate mode (CBR; also allowed to drop frames)
     no_cbr = False
+
+    # Bits per pixel threshold (steers downscaling and frame rate reduction)
+    # Personal recommendations for VP8:
+    #   < 0.01: bad quality
+    #   ~ 0.04: med quality
+    #   > 0.075: good quality
     bpp_thresh = 0.075
+
+    # Preserve input transparency
+    # Overrides any value of pix_fmt with "yuva420p"
     transparency = False
+
+    # Pixel format to use
+    # See "ffmpeg -h encoder=libvpx(-vp9)" for a full list of supported values
     pix_fmt = "yuv420p"
+
+    # Min. height threshold for automatic downscaling
+    # Has no influence on input that is already below the threshold
     min_height = 240
+
+    # Max. height threshold for automatic downscaling
+    # Can be used to force-downscale, but has to be higher than min_height
     max_height = None
+
+    # Min. fps threshold for automatic frame rate reduction
+    # Has no influence on input that is already below the threshold
     min_fps = 24
+
+    # Max. fps threshold for automatic frame rate reduction
+    # Can be used to force a lower frame rate, but has to be higher than min_fps
     max_fps = None
 
-    # Advanced Audio Options
+    # What audio encoder to use
+    #   libvorbis -> Vorbis
+    #   libopus   -> Opus (fails on some surround sound configurations)
+    #   opus      -> Opus (not tested, but it should work in theory)
     a_codec = "libvorbis"
+
+    # Disable audio copying (i.e. always reencode all audio)
     no_copy = False
+
+    # Copy audio streams regardless of their bitrate
+    # Audio streams will still be reencoded in case of unsupported audio
+    # formats, -ss or audio filters
     force_copy = False
+
+    # Min. audio threshold for automatic audio bitrate selection
+    # Represents the audio bitrate per channel (e.g. 24 -> 48Kbps for stereo)
     min_audio = 24
+
+    # Max. audio threshold for automatic audio bitrate selection
+    # Represents the audio bitrate per channel (e.g. 80 -> 160Kbps for stereo)
+    # Has to be higher than min_audio and >6 (limit for libvorbis)
     max_audio = None
 
-    # Misc. Options
+    # Disable user set filters during the 1st of a 2-pass encode
+    # Useful when very demanding filters are used (e.g. nlmeans)
+    # Has no influence on automatically used filters (scale and fps)
     no_filter_firstpass = False
+
+    # Set FFmpeg verbosity (ffmpeg -v/-loglevel)
+    # Special option "stats" is a shortcut for "-v error -stats"
     ffmpeg_verbosity = "stats"
+
+    # Enable debug mode
+    # Prints FFmpeg commands without executing them
     debug = False
 
 
