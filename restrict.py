@@ -1390,8 +1390,8 @@ def call_ffmpeg(video, mode):
         msg("Converting...")
 
     for p in range(1, opts.passes+1):
-        if (opts.passes == 2 or mode == 3) and p == 1 \
-           and os.path.exists(f"{video.info.name}-0.log"):
+        if p < opts.passes and \
+           (mode == 3 or os.path.exists(f"{video.info.name}-0.log")):
             continue
 
         if opts.debug:
