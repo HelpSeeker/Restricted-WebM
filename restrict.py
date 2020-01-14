@@ -1153,10 +1153,13 @@ def parse_cli():
 
 def additional_checks():
     """Check for invalid options that aren't detected by argparse."""
-    # Warn againts excessive thread usage as FFmpeg would do it
-    # In reality VP8 encoding doesn't even scale well beyond 4-6 threads
+    # Warn againts excessive thread usage
+    if opts.threads > 6 and opts.v_codec == "libvpx":
+        err("VP8 encoding via libvpx doesn't scale well beyond 4-6 threads.",
+            color=fgcolors.WARNING)
     if opts.threads > 16:
-        err("More than 16 threads are not recommended.", color=fgcolors.WARNING)
+        err("Using more than 16 threads is not recommended.",
+            color=fgcolors.WARNING)
 
     # Special integer checks
     if opts.max_height and opts.max_height < opts.min_height:
