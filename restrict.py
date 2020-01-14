@@ -1391,7 +1391,7 @@ def call_ffmpeg(video, mode):
 
     for p in range(1, opts.passes+1):
         if (opts.passes == 2 or mode == 3) and p == 1 \
-           and os.path.exists("ffmpeg2pass-0.log"):
+           and os.path.exists(f"{video.info.name}-0.log"):
             continue
 
         if opts.debug:
