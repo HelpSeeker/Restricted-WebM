@@ -302,7 +302,7 @@ class FileInfo:
         """Initialize all properties."""
         # Subtitle-related
         self.image_subs = out_image_subs(in_path)
-        
+
         # Path-related
         self.input = in_path
         ext = f"{'mkv' if self.image_subs else 'webm'}"
@@ -316,6 +316,12 @@ class FileInfo:
         ]
         info = subprocess.run(command, stdout=subprocess.PIPE).stdout
         info = json.loads(info)
+
+        # Check input file for basic validity
+        # Needs to be done here as the following steps could already fail
+        self.valid = self.is_valid(info)
+        if not self.valid:
+            return
 
         # Duration-related
         try:
@@ -335,6 +341,24 @@ class FileInfo:
         self.in_height, self.in_fps, self.ratio = self.video_properties(v_stream)
         self.out_height = self.in_height
         self.out_fps = self.in_fps
+
+    def is_valid(self, info):
+        """Test for basic pitfalls that would lead to FFmpeg failure."""
+        streams = [s['codec_type'] for s in info['streams']]
+        if self.image_subs and not opts.mkv_fallback:
+            err(f"{self.input}: "
+                "Conversion of image-based subtitles not supported!")
+            return False
+        if streams[0] != "video":
+            err(f"{self.input}: "
+                "Unsupported stream order (first stream not video)!")
+            return False
+        if [s for s in streams[1:] if s == "video"]:
+            err(f"{self.input}: "
+                "Files with more than one video stream not supported!")
+            return False
+
+        return True
 
     def brute_input_duration(self):
         """Brute-force detect input duration for GIFs and other images."""
@@ -512,6 +536,9 @@ class ConvertibleFile:
     def __init__(self, info):
         """Initialize all properties"""
         self.info = info
+        self.valid = self.info.valid
+        if not self.valid:
+            return
 
         # Verbosity-related
         if opts.ffmpeg_verbosity == "stats":
@@ -1409,33 +1436,12 @@ def main():
     for i, path in enumerate(opts.files, start=1):
         resolve_path(path)
         video = ConvertibleFile(FileInfo(path))
-
-        msg(f"File {fgcolors.FILE}{i}{fgcolors.DEFAULT} (of {len(opts.files)}): "
-            f"{fgcolors.FILE}{video.info.input}{fgcolors.DEFAULT}")
-
-        if video.info.image_subs and not opts.mkv_fallback:
-            err(f"{video.info.input}: "
-                "Conversion of image-based subtitles not supported!")
+        if not video.valid:
             clean(video)
             continue
 
-        # Check for basic stream order assumptions
-        # First stream: video stream
-        # Everything afterwards: non-video streams
-        # if not in_json['streams'][0]['codec_type'] == "video":
-            # err(i)
-            # err("Error: Unsupported stream order (first stream not video)!")
-            # clean()
-            # continue
-        # try:
-            # if in_json['streams'][1]['codec_type'] == "video":
-                # err(i)
-                # err("Error: More than one video stream per file not supported!")
-                # clean()
-                # continue
-        # except IndexError:
-            # pass
-
+        msg(f"File {fgcolors.FILE}{i}{fgcolors.DEFAULT} (of {len(opts.files)}): "
+            f"{fgcolors.FILE}{video.info.input}{fgcolors.DEFAULT}")
         msg(indent(dedent(f"""
             Verbosity:  {' '.join(video.verbosity)}
             Input/trim: {' '.join(video.input)}
