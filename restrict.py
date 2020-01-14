@@ -300,12 +300,15 @@ class FileInfo:
 
     def __init__(self, in_path):
         """Initialize all properties."""
+        # Subtitle-related
+        self.image_subs = out_image_subs(in_path)
+        
         # Path-related
         self.input = in_path
-        self.ext = f"{'mkv' if out_image_subs(self.input) else 'webm'}"
+        ext = f"{'mkv' if self.image_subs else 'webm'}"
         self.name = os.path.splitext(os.path.basename(self.input))[0]
-        self.output = f"{self.name}.{self.ext}"
-        self.temp = f"{self.name}_{opts.suffix}.{self.ext}"
+        self.output = f"{self.name}.{ext}"
+        self.temp = f"{self.name}_{opts.suffix}.{ext}"
 
         command = [
             "ffprobe", "-v", "error", "-show_format", "-show_streams",
@@ -539,7 +542,7 @@ class ConvertibleFile:
         # Subtitle-related
         if opts.burn_subs:
             self.subs = ["-sn"]
-        elif out_image_subs(self.info.input):
+        elif self.info.image_subs:
             self.subs = ["-c:s", "copy"]
         elif opts.subs:
             self.subs = ["-c:s", "webvtt"]
@@ -1410,7 +1413,7 @@ def main():
         msg(f"File {fgcolors.FILE}{i}{fgcolors.DEFAULT} (of {len(opts.files)}): "
             f"{fgcolors.FILE}{video.info.input}{fgcolors.DEFAULT}")
 
-        if video.info.ext == "mkv" and not opts.mkv_fallback:
+        if video.info.image_subs and not opts.mkv_fallback:
             err(f"{video.info.input}: "
                 "Conversion of image-based subtitles not supported!")
             clean(video)
