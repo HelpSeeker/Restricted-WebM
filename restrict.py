@@ -80,19 +80,19 @@ class DefaultOptions:
     #   0 -> quiet mode (only warnings and errors)
     #   1 -> default mode (0 + basic progress information)
     #   2 -> verbose mode (0 + 1 + FFmpeg options + size info)
-    verbosity = 1
+    VERBOSITY = 1
 
     # Enable audio output
     # Converts all available audio streams by default
     # Only has an effect, when the input comes with at least one audio stream
-    audio = False
+    AUDIO = False
 
     # Upper size limit in MB
-    limit = 3
+    LIMIT = 3
 
     # FFmpeg filter string (https://ffmpeg.org/ffmpeg-filters.html)
     # Gets passed directly to FFmpeg (and will throw errors if wrong)
-    f_user = None
+    F_USER = None
 
     # Number of passes to use during 1st and 2nd bitrate mode
     # (CBR will always be done with a single pass)
@@ -100,130 +100,130 @@ class DefaultOptions:
     #        encodes or when converting GIFs while preserving transparency
     #   2 -> should always be preferred as libvpx doesn't offer effective
     #        bitrate control for single pass encodes
-    passes = 2
+    PASSES = 2
 
     # Lower size limit as percentage of the upper one
     # 0 to disable, >0.95 (or >0.9 with --crf) is discouraged
-    under = 0.75
+    UNDER = 0.75
 
     # How many attempts to make for each bitrate mode
     # This is an upper limit, the remaining attempts of a mode may be skipped
     # if the file size doesn't change enough (<1%)
-    iters = 3
+    ITERS = 3
 
     # How many threads libvpx should use
     # FFmpeg discourages >16, but VP8 encoding doesn't scale well beyond 4-6
-    threads = 1
+    THREADS = 1
 
     # How to trim the input video (same as FFmpeg's -ss and -to)
     # Values must be in seconds (int/float) or need to be passed to valid_time()
     # Negative time values aren't supported
-    global_start = None
-    global_end = None
+    GLOBAL_START = None
+    GLOBAL_END = None
 
     # Force 2 channels per audio stream
     # Useful to avoid wasting bitrate on surround sound or to use libopus
     # for otherwise unsupported channel configurations
     # IMPORTANT: Also force-converts mono input to stereo
-    force_stereo = False
+    FORCE_STEREO = False
 
     # Limit the output to 1 video + 1 audio stream (no effect on subtitles)
-    basic_format = False
+    BASIC_FORMAT = False
 
     # Enable subtitle output
     # Input with image-based subtitles will be skipped by default
-    subs = False
+    SUBS = False
 
     # Use MKV as fallback container for input with image-based subtitles,
     # instead of skipping the files entirely
     # Has no effect if subtitle output is disabled
-    mkv_fallback = False
+    MKV_FALLBACK = False
 
     # Map input subtitles, but disable subtitle output
     # Useful to prevent unnecessary soft subs in the output while hardsubbing
-    burn_subs = False
+    BURN_SUBS = False
 
     # What video encoder to use
     #   libvpx     -> VP8
     #   libvpv-vp9 -> VP9
     # AV1 (via libaom or libsvt_av1) isn't supported
-    v_codec = "libvpx"
+    V_CODEC = "libvpx"
 
     # Use CQ (constrained quality) instead of classic VBR
-    crf = False
+    CRF = False
 
     # Skip 1st bitrate mode (VBR or CQ + min. quality)
-    no_qmax = False
+    NO_QMAX = False
 
     # Skip 3rd bitrate mode (CBR; also allowed to drop frames)
-    no_cbr = False
+    NO_CBR = False
 
     # Bits per pixel threshold (steers downscaling and frame rate reduction)
     # Personal recommendations for VP8:
     #   < 0.01: bad quality
     #   ~ 0.04: med quality
     #   > 0.075: good quality
-    bpp_thresh = 0.075
+    BPP_THRESH = 0.075
 
     # Preserve input transparency
     # Overrides any value of pix_fmt with "yuva420p"
-    transparency = False
+    TRANSPARENCY = False
 
     # Pixel format to use
     # See "ffmpeg -h encoder=libvpx(-vp9)" for a full list of supported values
-    pix_fmt = "yuv420p"
+    PIX_FMT = "yuv420p"
 
     # Min. height threshold for automatic downscaling
     # Has no influence on input that is already below the threshold
-    min_height = 240
+    MIN_HEIGHT = 240
 
     # Max. height threshold for automatic downscaling
     # Can be used to force-downscale, but has to be higher than min_height
-    max_height = None
+    MAX_HEIGHT = None
 
     # Min. fps threshold for automatic frame rate reduction
     # Has no influence on input that is already below the threshold
-    min_fps = 24
+    MIN_FPS = 24
 
     # Max. fps threshold for automatic frame rate reduction
     # Can be used to force a lower frame rate, but has to be higher than min_fps
-    max_fps = None
+    MAX_FPS = None
 
     # What audio encoder to use
     #   libvorbis -> Vorbis
     #   libopus   -> Opus (fails on some surround sound configurations)
     #   opus      -> Opus (not tested, but it should work in theory)
-    a_codec = "libvorbis"
+    A_CODEC = "libvorbis"
 
     # Disable audio copying (i.e. always reencode all audio)
-    no_copy = False
+    NO_COPY = False
 
     # Copy audio streams regardless of their bitrate
     # Audio streams will still be reencoded in case of unsupported audio
     # formats, -ss or audio filters
-    force_copy = False
+    FORCE_COPY = False
 
     # Min. audio threshold for automatic audio bitrate selection
     # Represents the audio bitrate per channel (e.g. 24 -> 48Kbps for stereo)
-    min_audio = 24
+    MIN_AUDIO = 24
 
     # Max. audio threshold for automatic audio bitrate selection
     # Represents the audio bitrate per channel (e.g. 80 -> 160Kbps for stereo)
     # Has to be higher than min_audio and >6 (limit for libvorbis)
-    max_audio = None
+    MAX_AUDIO = None
 
     # Disable user set filters during the 1st of a 2-pass encode
     # Useful when very demanding filters are used (e.g. nlmeans)
     # Has no influence on automatically used filters (scale and fps)
-    no_filter_firstpass = False
+    NO_FILTER_FIRSTPASS = False
 
     # Set FFmpeg verbosity (ffmpeg -v/-loglevel)
     # Special option "stats" is a shortcut for "-v error -stats"
-    ffmpeg_verbosity = "stats"
+    FFMPEG_VERBOSITY = "stats"
 
     # Enable debug mode
     # Prints FFmpeg commands without executing them
-    debug = False
+    DEBUG = False
 
 
 class CustomArgumentParser(argparse.ArgumentParser):
@@ -1029,52 +1029,52 @@ def parse_cli():
     # Common Options
     verbosity = parser.add_mutually_exclusive_group()
     verbosity.add_argument("-q", "--quiet", dest="verbosity", action="store_const",
-                           const=0, default=defaults.verbosity)
+                           const=0, default=defaults.VERBOSITY)
     verbosity.add_argument("-v", "--verbose", dest="verbosity", action="store_const",
-                           const=2, default=defaults.verbosity)
+                           const=2, default=defaults.VERBOSITY)
     parser.add_argument("-a", "--audio", action="store_true",
-                        default=defaults.audio)
+                        default=defaults.AUDIO)
     parser.add_argument("-s", "--size", dest="limit", type=positive_float,
-                        default=defaults.limit)
+                        default=defaults.LIMIT)
     parser.add_argument("-f", "--filters", dest="f_user",
-                        default=defaults.f_user)
-    parser.add_argument("-p", "--passes", type=int, default=defaults.passes,
+                        default=defaults.F_USER)
+    parser.add_argument("-p", "--passes", type=int, default=defaults.PASSES,
                         choices=[1, 2])
     parser.add_argument("-u", "--undershoot", dest="under", type=float,
-                        default=defaults.under)
+                        default=defaults.UNDER)
     parser.add_argument("-i", "--iterations", dest="iters", type=positive_int,
-                        default=defaults.iters)
+                        default=defaults.ITERS)
     parser.add_argument("-t", "--threads", type=positive_int,
-                        default=defaults.threads)
+                        default=defaults.THREADS)
     parser.add_argument("-ss", "--start", dest="global_start", type=valid_time,
-                        default=defaults.global_start)
+                        default=defaults.GLOBAL_START)
     parser.add_argument("-to", "--end", dest="global_end", type=valid_time,
-                        default=defaults.global_end)
+                        default=defaults.GLOBAL_END)
     parser.add_argument("-fs", "--force-stereo", action="store_true",
-                        default=defaults.force_stereo)
+                        default=defaults.FORCE_STEREO)
     parser.add_argument("-bf", "--basic-format", action="store_true",
-                        default=defaults.basic_format)
+                        default=defaults.BASIC_FORMAT)
     # Subtitle Options
     parser.add_argument("--subtitles", dest="subs", action="store_true",
-                        default=defaults.subs)
+                        default=defaults.SUBS)
     parser.add_argument("--mkv-fallback", action="store_true",
-                        default=defaults.mkv_fallback)
+                        default=defaults.MKV_FALLBACK)
     parser.add_argument("--burn-subs", action="store_true",
-                        default=defaults.burn_subs)
+                        default=defaults.BURN_SUBS)
     # Advanced Video Options
     parser.add_argument("--vp9", dest="v_codec", action="store_const",
-                        const="libvpx-vp9", default=defaults.v_codec)
-    parser.add_argument("--crf", action="store_true", default=defaults.crf)
+                        const="libvpx-vp9", default=defaults.V_CODEC)
+    parser.add_argument("--crf", action="store_true", default=defaults.CRF)
     parser.add_argument("--no-qmax", action="store_true",
-                        default=defaults.no_qmax)
+                        default=defaults.NO_QMAX)
     parser.add_argument("--no-cbr", action="store_true",
-                        default=defaults.no_cbr)
+                        default=defaults.NO_CBR)
     parser.add_argument("--bpp", dest="bpp_thresh", type=positive_float,
-                        default=defaults.bpp_thresh)
+                        default=defaults.BPP_THRESH)
     parser.add_argument("--transparency", action="store_true",
-                        default=defaults.transparency)
+                        default=defaults.TRANSPARENCY)
     parser.add_argument(
-        "--pix-fmt", default=defaults.pix_fmt,
+        "--pix-fmt", default=defaults.PIX_FMT,
         choices=[
             "yuv420p", "yuva420p",
             "yuv422p", "yuv440p", "yuv444p",
@@ -1084,30 +1084,30 @@ def parse_cli():
         ]
     )
     parser.add_argument("--min-height", type=positive_int,
-                        default=defaults.min_height)
+                        default=defaults.MIN_HEIGHT)
     parser.add_argument("--max-height", type=positive_int,
-                        default=defaults.max_height)
+                        default=defaults.MAX_HEIGHT)
     parser.add_argument("--min-fps", type=positive_float,
-                        default=defaults.min_fps)
+                        default=defaults.MIN_FPS)
     parser.add_argument("--max-fps", type=positive_float,
-                        default=defaults.max_fps)
+                        default=defaults.MAX_FPS)
     # Advanced Audio Options
     parser.add_argument("--opus", dest="a_codec", action="store_const",
-                        const="libopus", default=defaults.a_codec)
+                        const="libopus", default=defaults.A_CODEC)
     copy_action = parser.add_mutually_exclusive_group()
     copy_action.add_argument("--no-copy", action="store_true",
-                             default=defaults.no_copy)
+                             default=defaults.NO_COPY)
     copy_action.add_argument("--force-copy", action="store_true",
-                             default=defaults.force_copy)
+                             default=defaults.FORCE_COPY)
     parser.add_argument("--min-audio", type=positive_int,
-                        default=defaults.min_audio)
+                        default=defaults.MIN_AUDIO)
     parser.add_argument("--max-audio", type=positive_int,
-                        default=defaults.max_audio)
+                        default=defaults.MAX_AUDIO)
     # Misc. Options
     parser.add_argument("--no-filter-firstpass", action="store_true",
-                        default=defaults.no_filter_firstpass)
+                        default=defaults.NO_FILTER_FIRSTPASS)
     parser.add_argument(
-        "--ffmpeg-verbosity", default=defaults.ffmpeg_verbosity,
+        "--ffmpeg-verbosity", default=defaults.FFMPEG_VERBOSITY,
         choices=[
             "quiet", "panic", "fatal",
             "error", "warning", "info",
@@ -1115,7 +1115,7 @@ def parse_cli():
             "stats",
         ]
     )
-    parser.add_argument("--debug", action="store_true", default=defaults.debug)
+    parser.add_argument("--debug", action="store_true", default=defaults.DEBUG)
 
     # Advanced User Options
     parser.set_defaults(
