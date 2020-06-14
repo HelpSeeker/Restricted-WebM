@@ -4,10 +4,6 @@ A script to produce WebMs within a certain file size limit.
 
 The goal is to automatically produce decent looking WebMs. Little to no user input or prior experience required.
 
-**Alternative versions:**
-* [New Bash version](https://github.com/HelpSeeker/Restricted-WebM/tree/bash)
-* [Original (legacy) Bash version](https://github.com/HelpSeeker/Restricted-WebM/tree/legacy)
-
 ## Usage
 
 ```
@@ -40,8 +36,8 @@ Subtitle options:
 Advanced video options:
   --vp9                     use VP9 instead of VP8
   --crf                     use constrained quality instead of VBR
-  --no-qmax                 skip the first bitrate mode (VBR with qmax)
-  --no-cbr                  skip the last bitrate mode (CBR with frame dropping)
+  --no-qmax                 skip first bitrate mode (VBR with qmax)
+  --no-cbr                  skip last bitrate mode (CBR with frame dropping)
   --bpp BPP                 set custom bpp threshold (def: 0.075)
   --transparency            preserve input transparency
   --pix-fmt FORMAT          choose color space (def: yuv420p)
@@ -60,7 +56,6 @@ Advanced audio options:
 Misc. options:
   --no-filter-firstpass     disable user filters during the first pass
   --ffmpeg-verbosity LEVEL  change FFmpeg command verbosity (def: stats)
-  --no-color                disable colorized output
   --debug                   only print ffmpeg commands
 
 All output will be saved in 'webm_done/'.
@@ -71,6 +66,9 @@ All output will be saved in 'webm_done/'.
 
 * Python >= 3.6
 * [FFmpeg (incl. ffprobe)](https://www.ffmpeg.org/)
+
+### Optional
+* [colorama](https://github.com/tartley/colorama) for colorized terminal output on Windows
 
 ***
 
