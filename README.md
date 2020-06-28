@@ -70,6 +70,28 @@ All output will be saved in 'webm_done/'.
 ### Optional
 * [colorama](https://github.com/tartley/colorama) for colorized terminal output on Windows
 
+## Examples
+
+The following examples showcase the most basic commands to create WebMs for 4chan (length limitations aren't addressed).
+
+#### Limit 3MB, no audio (for all boards except /b/)
+
+```
+restrict.py INPUT [INPUT]...
+```
+
+#### Limit 4MB, with audio (for /gif/)
+
+```
+restrict.py -a -s 4 INPUT [INPUT]...
+```
+
+#### Limit 6MB, with audio (for /wsg/)
+
+```
+restrict.py -a -s 6 INPUT [INPUT]...
+```
+
 ***
 
 For further information consult the [wiki](https://github.com/HelpSeeker/Restricted-WebM/wiki)!
