@@ -912,7 +912,8 @@ def check_prereq():
             subprocess.run([r], stdout=subprocess.DEVNULL, \
                                 stderr=subprocess.DEVNULL)
         except FileNotFoundError:
-            err(f"Error: {r} not found!")
+			# Can't use err(), since opts isn't initialized yet
+            print(f"Error: {r} not found!", file=sys.stderr)
             sys.exit(status.DEP)
 
 
