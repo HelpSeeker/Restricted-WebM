@@ -67,6 +67,8 @@ All output will be saved in 'webm_done/'.
 * Python >= 3.6
 * [FFmpeg (incl. ffprobe)](https://www.ffmpeg.org/)
 
+The FFmpeg and ffprobe executables must be in your [PATH](https://en.wikipedia.org/wiki/PATH_(variable)) or - Windows CMD only - in the same location as the script.
+
 ### Optional
 * [colorama](https://github.com/tartley/colorama) for colorized terminal output on Windows
 

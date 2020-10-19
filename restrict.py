@@ -305,10 +305,11 @@ class FileInfo:
 
         # Path-related
         self.input = in_path
+        self.dir = os.path.join(os.path.dirname(self.input), opts.out_dir)
         ext = f"{'mkv' if self.image_subs else 'webm'}"
         self.name = os.path.splitext(os.path.basename(self.input))[0]
-        self.output = f"{self.name}.{ext}"
-        self.temp = f"{self.name}_{opts.suffix}.{ext}"
+        self.output = os.path.join(self.dir, f"{self.name}.{ext}")
+        self.temp = os.path.join(self.dir, f"{self.name}_{opts.suffix}.{ext}")
 
         command = [
             "ffprobe", "-v", "error", "-show_format", "-show_streams",
@@ -859,8 +860,7 @@ class FileConverter:
 
         self.limit_size(video)
         if self.best_size > opts.max_size:
-            err(f"{os.path.abspath(video.info.output)}: Still too large",
-                color=fgcolors.WARNING)
+            err(f"{video.info.output}: Still too large", color=fgcolors.WARNING)
             size_fail = True
             return
         if self.best_size >= opts.min_size:
@@ -868,8 +868,7 @@ class FileConverter:
 
         self.raise_size(video)
         if self.best_size < opts.min_size:
-            err(f"{os.path.abspath(video.info.output)}: Still too small",
-                color=fgcolors.WARNING)
+            err(f"{video.info.output}: Still too small", color=fgcolors.WARNING)
             size_fail = True
 
     def reset(self):
@@ -1297,11 +1296,10 @@ def print_options():
 
 
 def resolve_path(in_path):
-    """Change into output directory"""
+    """Create output dir if non-existent."""
     out_dir = os.path.join(os.path.dirname(in_path), opts.out_dir)
     if not os.path.exists(out_dir):
         os.mkdir(out_dir)
-    os.chdir(out_dir)
 
 
 def audio_copy(video, stream):
@@ -1318,13 +1316,13 @@ def audio_copy(video, stream):
     command = ["ffmpeg", "-y", "-v", "error", "-i", video.info.input]
     command.extend(copy_dur)
     command.extend(["-map", f"0:a:{stream}", "-c", "copy",
-                    f"{video.info.name}_{opts.suffix}.mkv"])
+                    os.path.join(video.info.dir, f"{video.info.name}_{opts.suffix}.mkv")])
     subprocess.run(command)
 
     command = ["ffprobe", "-v", "error",
                "-show_format", "-show_streams",
                "-print_format", "json",
-               f"{video.info.name}_{opts.suffix}.mkv"]
+               os.path.join(video.info.dir, f"{video.info.name}_{opts.suffix}.mkv")]
     info = subprocess.run(command, stdout=subprocess.PIPE).stdout
     info = json.loads(info)
 
@@ -1419,7 +1417,8 @@ def call_ffmpeg(video, mode):
 
 def clean(video):
     """Clean leftover file in the workspace"""
-    for f in [f"{video.info.name}_{opts.suffix}.{e}" for e in ["webm", "mkv"]]:
+    base = os.path.join(video.info.dir, f"{video.info.name}_{opts.suffix}")
+    for f in [f"{base}.{ext}" for ext in ["webm", "mkv"]]:
         if os.path.exists(f):
             os.remove(f)
     if opts.passes == 2 and os.path.exists(f"{video.info.name}-0.log"):
@@ -1451,7 +1450,7 @@ def main():
             Mapping:    {' '.join(video.map)}
             Audio:      {' '.join(video.audio)}
             Subtitles:  {' '.join(video.subs)}
-            Output:     {os.path.abspath(video.info.output)}
+            Output:     {video.info.output}
             """), "  "),
             level=2)
 
