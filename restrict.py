@@ -315,7 +315,7 @@ class FileInfo:
             "ffprobe", "-v", "error", "-show_format", "-show_streams",
             "-print_format", "json", self.input
         ]
-        info = subprocess.run(command, stdout=subprocess.PIPE).stdout
+        info = subprocess.run(command, stdout=subprocess.PIPE, check=False).stdout
         info = json.loads(info)
 
         # Check input file for basic validity
@@ -374,8 +374,8 @@ class FileInfo:
             "-print_format", "json", f"{self.name}_{opts.suffix}.mkv"
         ]
 
-        subprocess.run(ffmpeg)
-        info = subprocess.run(ffprobe, stdout=subprocess.PIPE).stdout
+        subprocess.run(ffmpeg, check=False)
+        info = subprocess.run(ffprobe, stdout=subprocess.PIPE, check=False).stdout
         info = json.loads(info)
 
         return float(info['format']['duration'])
@@ -442,8 +442,8 @@ class FileInfo:
                 "-print_format", "json", f"{self.name}_{opts.suffix}.mkv"
             ]
 
-            subprocess.run(ffmpeg)
-            info = subprocess.run(ffprobe, stdout=subprocess.PIPE).stdout
+            subprocess.run(ffmpeg, check=False)
+            info = subprocess.run(ffprobe, stdout=subprocess.PIPE, check=False).stdout
             info = json.loads(info)
             stream = info['streams'][0]
 
@@ -909,10 +909,11 @@ def check_prereq():
 
     for r in reqs:
         try:
-            subprocess.run([r], stdout=subprocess.DEVNULL, \
-                                stderr=subprocess.DEVNULL)
+            subprocess.run([r], check=False,
+                           stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL)
         except FileNotFoundError:
-			# Can't use err(), since opts isn't initialized yet
+            # Can't use err(), since opts isn't initialized yet
             print(f"Error: {r} not found!", file=sys.stderr)
             sys.exit(status.DEP)
 
@@ -1318,13 +1319,13 @@ def audio_copy(video, stream):
     command.extend(copy_dur)
     command.extend(["-map", f"0:a:{stream}", "-c", "copy",
                     os.path.join(video.info.dir, f"{video.info.name}_{opts.suffix}.mkv")])
-    subprocess.run(command)
+    subprocess.run(command, check=False)
 
     command = ["ffprobe", "-v", "error",
                "-show_format", "-show_streams",
                "-print_format", "json",
                os.path.join(video.info.dir, f"{video.info.name}_{opts.suffix}.mkv")]
-    info = subprocess.run(command, stdout=subprocess.PIPE).stdout
+    info = subprocess.run(command, stdout=subprocess.PIPE, check=False).stdout
     info = json.loads(info)
 
     in_rate = int(info['format']['bit_rate'])
@@ -1406,10 +1407,11 @@ def call_ffmpeg(video, mode):
                 )
                 subprocess.run(
                     video.assemble_command(mode, p),
-                    stdin=raw_pipe.stdout
+                    stdin=raw_pipe.stdout,
+                    check=False,
                 )
             else:
-                subprocess.run(video.assemble_command(mode, p))
+                subprocess.run(video.assemble_command(mode, p), check=False)
 
         # Always run 3rd mode (CBR) with only one pass
         if mode == 3:
